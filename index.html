@@ -425,7 +425,9 @@
                 // const response = await fetch('posts/index.txt');
                 // const postListText = await response.text();
                 
-                const postListText = virtualFS['posts/index.txt'];
+                const postIndexUrl = "posts/index.txt";
+                const response = await fetch(postIndexUrl);
+                const postListText = await response.text();
                 const postUrls = postListText.split('\n').filter(url => url.trim() !== '');
                 
                 // Clear loading indicator
@@ -490,14 +492,9 @@
             try {
                 content.innerHTML = '<div class="cyber-loader"></div>';
                 
-                // Simulate network delay for demo
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // In a real implementation, you would fetch from:
-                // const response = await fetch(`posts/${postUrl}`);
-                // const markdown = await response.text();
-                
-                const markdown = virtualFS[`posts/${postUrl}`];
+                const postRealUrl = `posts/${postUrl}`;
+                const response = await fetch(postRealUrl);
+                const markdown = await response.text();
                 
                 if (!markdown) {
                     throw new Error('Post not found');
@@ -605,8 +602,6 @@
             content.innerHTML = `
                 <div class="construction">
                     <h1>UNDER CONSTRUCTION</h1>
-                    <p>This cyber space is currently being developed. Check back soon for cutting-edge content on technology, digital frontiers, and the future of the web.</p>
-                    <p>In the meantime, explore the possibilities of this static blog platform built entirely with vanilla JavaScript.</p>
                 </div>
             `;
             
@@ -621,8 +616,7 @@
             content.innerHTML = `
                 <div class="post">
                     <h1>Network Error</h1>
-                    <p>Unable to load content from the server.</p>
-                    <p>Please check your connection and try again later.</p>
+                    <p>Unable to load content, or no content is present.</p>
                 </div>
             `;
         }
