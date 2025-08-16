@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hi, I'm JAM</title>
+    <title>jam.do</title>
     <style>
         :root {
-            --cyber-gradient: linear-gradient(45deg, #00c6ff, #0072ff);
             --cyber-accent: #00c6ff;
+            --cyber-accent-dark: #0072ff;
             --cyber-dark: #0a192f;
+            --cyber-mid: #112240;
             --cyber-light: #e6f1ff;
-            --cyber-border: rgba(0, 198, 255, 0.5);
+            --cyber-border: rgba(0, 198, 255, 0.3);
         }
         
         * {
@@ -20,69 +21,96 @@
         }
         
         body {
-            font-family: Verdana, Geneva, sans-serif;
+            font-family: 'Courier New', Courier, monospace;
             background-color: var(--cyber-dark);
             color: var(--cyber-light);
-            line-height: 1.6;
+            line-height: 1.7;
             min-height: 100vh;
-            display: grid;
-            grid-template-columns: 250px 1fr;
-            grid-template-rows: auto 1fr;
-            grid-template-areas:
-                "header header"
-                "sidebar content";
+            position: relative;
+            padding: 20px;
+            overflow-x: hidden;
         }
         
         header {
-            grid-area: header;
-            padding: 1.5rem;
-            background: rgba(10, 25, 47, 0.9);
-            border-bottom: 2px solid;
-            border-image: var(--cyber-gradient);
-            border-image-slice: 1;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(5px);
+            padding: 1.5rem 0;
+            text-align: center;
+            position: relative;
+            margin-bottom: 40px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
         }
         
         .logo {
-            font-size: 1.8rem;
+            font-size: 2.5rem;
             font-weight: bold;
-            background: var(--cyber-gradient);
+            background: linear-gradient(45deg, var(--cyber-accent), var(--cyber-accent-dark));
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
-            text-align: center;
-            letter-spacing: 2px;
-            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        #sidebar-toggle {
+            position: fixed;
+            top: 25px;
+            left: 25px;
+            width: 40px;
+            height: 40px;
+            background: var(--cyber-mid);
+            border: 1px solid var(--cyber-border);
+            color: var(--cyber-accent);
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        #sidebar-toggle:hover {
+            background: rgba(0, 198, 255, 0.1);
+            transform: scale(1.05);
         }
         
         #sidebar {
-            grid-area: sidebar;
-            padding: 1.5rem 1rem;
-            background: rgba(10, 25, 47, 0.8);
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 280px;
+            background: rgba(10, 25, 47, 0.95);
             border-right: 1px solid var(--cyber-border);
-            height: calc(100vh - 70px);
-            position: sticky;
-            top: 70px;
+            padding: 70px 20px 20px;
             overflow-y: auto;
+            z-index: 99;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        #sidebar.active {
+            transform: translateX(0);
         }
         
         #sidebar h2 {
             margin-bottom: 1.5rem;
             font-size: 1.3rem;
-            text-align: center;
             position: relative;
+            color: var(--cyber-accent);
+            padding-bottom: 0.5rem;
         }
         
         #sidebar h2::after {
             content: '';
             display: block;
-            width: 60px;
+            width: 100%;
             height: 2px;
-            background: var(--cyber-gradient);
-            margin: 0.5rem auto 0;
+            background: linear-gradient(to right, transparent, var(--cyber-accent), transparent);
+            position: absolute;
+            bottom: 0;
+            left: 0;
         }
         
         #post-list {
@@ -90,9 +118,8 @@
         }
         
         #post-list li {
-            padding: 0.7rem 1rem;
+            padding: 0.7rem 0;
             margin-bottom: 0.5rem;
-            border-radius: 4px;
             transition: all 0.3s ease;
             position: relative;
             padding-left: 1.8rem;
@@ -108,7 +135,6 @@
             height: 8px;
             background: rgba(0, 198, 255, 0.3);
             transition: all 0.3s ease;
-            border-radius: 50%;
         }
         
         #post-list li.active::before {
@@ -140,41 +166,33 @@
         }
         
         #content {
-            grid-area: content;
-            padding: 2rem;
             max-width: 800px;
             margin: 0 auto;
             width: 100%;
+            padding-top: 20px;
         }
         
         .post {
-            background: rgba(10, 25, 47, 0.6);
-            border-radius: 8px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            border: 1px solid var(--cyber-border);
-            box-shadow: 0 0 20px rgba(0, 198, 255, 0.1);
+            padding: 2rem 0;
+            margin-bottom: 3rem;
             position: relative;
-            overflow: hidden;
         }
         
-        .post::before {
+        .post + .post::before {
             content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 5px;
-            height: 100%;
-            background: var(--cyber-gradient);
+            display: block;
+            width: 25%;
+            max-width: 200px;
+            height: 5px;
+            background: linear-gradient(to right, transparent, var(--cyber-accent), transparent);
+            margin: 0 auto 3rem;
+            border-radius: 3px;
         }
         
         .post h1 {
             font-size: 2.2rem;
             margin-bottom: 1.5rem;
-            background: var(--cyber-gradient);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+            color: var(--cyber-accent);
             position: relative;
             padding-bottom: 0.5rem;
         }
@@ -184,15 +202,27 @@
             position: absolute;
             bottom: 0;
             left: 0;
-            width: 80px;
+            width: 100%;
             height: 2px;
-            background: var(--cyber-gradient);
+            background: linear-gradient(to right, transparent, var(--cyber-accent), transparent);
         }
         
         .post h2 {
             font-size: 1.6rem;
             margin: 1.5rem 0 1rem;
             color: var(--cyber-accent);
+            position: relative;
+            padding-bottom: 0.3rem;
+        }
+        
+        .post h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 80px;
+            height: 2px;
+            background: var(--cyber-accent);
         }
         
         .post h3 {
@@ -202,14 +232,13 @@
         }
         
         .post p {
-            margin-bottom: 1rem;
+            margin-bottom: 1.2rem;
             font-size: 1.05rem;
         }
         
         .post img {
             max-width: 100%;
-            border-radius: 6px;
-            margin: 1rem 0;
+            margin: 1.5rem 0;
             border: 1px solid var(--cyber-border);
         }
         
@@ -226,7 +255,7 @@
             left: 0;
             width: 100%;
             height: 1px;
-            background: var(--cyber-gradient);
+            background: var(--cyber-accent);
             transform: scaleX(0);
             transform-origin: right;
             transition: transform 0.3s ease;
@@ -240,14 +269,13 @@
         .post pre {
             background: rgba(0, 0, 0, 0.3);
             padding: 1rem;
-            border-radius: 4px;
             overflow-x: auto;
-            margin: 1rem 0;
+            margin: 1.5rem 0;
             border: 1px solid var(--cyber-border);
         }
         
         .post code {
-            font-family: Verdana, Geneva, sans-serif;
+            font-family: 'Courier New', Courier, monospace;
             color: var(--cyber-accent);
         }
         
@@ -267,25 +295,6 @@
             margin-bottom: 0.5rem;
         }
         
-        .construction {
-            text-align: center;
-            padding: 3rem;
-        }
-        
-        .construction h1 {
-            font-size: 2.5rem;
-            margin-bottom: 1.5rem;
-            color: var(--cyber-accent);
-        }
-        
-        .construction p {
-            font-size: 1.2rem;
-            margin-bottom: 2rem;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        
         .cyber-loader {
             display: flex;
             justify-content: center;
@@ -299,7 +308,6 @@
             height: 40px;
             border: 4px solid rgba(0, 198, 255, 0.3);
             border-top: 4px solid var(--cyber-accent);
-            border-radius: 50%;
             animation: spin 1s linear infinite;
         }
         
@@ -309,122 +317,57 @@
         }
         
         @media (max-width: 768px) {
-            body {
-                grid-template-columns: 1fr;
-                grid-template-areas:
-                    "header"
-                    "content";
-            }
-            
             #sidebar {
-                display: none;
+                width: 85%;
             }
             
-            .mobile-menu-btn {
-                display: block;
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                width: 50px;
-                height: 50px;
-                border-radius: 50%;
-                background: var(--cyber-gradient);
-                border: none;
-                color: white;
-                font-size: 1.5rem;
-                z-index: 1000;
-                box-shadow: 0 0 15px rgba(0, 198, 255, 0.5);
-                cursor: pointer;
-            }
-            
-            .sidebar-mobile {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(10, 25, 47, 0.95);
-                z-index: 2000;
-                padding: 2rem;
-                overflow-y: auto;
-                transform: translateX(-100%);
-                transition: transform 0.3s ease;
-            }
-            
-            .sidebar-mobile.active {
-                transform: translateX(0);
-            }
-            
-            .close-sidebar {
-                position: absolute;
-                top: 20px;
-                right: 20px;
-                background: none;
-                border: none;
-                color: var(--cyber-accent);
-                font-size: 1.5rem;
-                cursor: pointer;
-            }
-        }
-        
-        @media (min-width: 769px) {
-            .mobile-menu-btn {
-                display: none;
+            .post {
+                padding: 1.5rem 0;
             }
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="logo">jam<span style="color: #00c6ff;">.do</span></div>
-    </header>
+    <button id="sidebar-toggle">☰</button>
     
     <div id="sidebar">
         <h2>posts</h2>
         <ul id="post-list"></ul>
     </div>
     
+    <header>
+        <div class="logo">jam.do</div>
+    </header>
+    
     <main id="content">
         <div class="cyber-loader"></div>
     </main>
-    
-    <button class="mobile-menu-btn" id="mobile-menu-btn">≡</button>
-    
-    <div class="sidebar-mobile" id="sidebar-mobile">
-        <button class="close-sidebar" id="close-sidebar">×</button>
-        <h2>POST ARCHIVE</h2>
-        <ul id="post-list-mobile"></ul>
-    </div>
 
     <script>
-
         // DOM elements
         const content = document.getElementById('content');
         const postList = document.getElementById('post-list');
-        const postListMobile = document.getElementById('post-list-mobile');
-        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-        const closeSidebar = document.getElementById('close-sidebar');
-        const sidebarMobile = document.getElementById('sidebar-mobile');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const sidebar = document.getElementById('sidebar');
 
-        // Toggle mobile sidebar
-        mobileMenuBtn.addEventListener('click', () => {
-            sidebarMobile.classList.add('active');
+        // Toggle sidebar
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
         });
 
-        closeSidebar.addEventListener('click', () => {
-            sidebarMobile.classList.remove('active');
+        // Close sidebar when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!sidebar.contains(e.target) && 
+                e.target !== sidebarToggle && 
+                sidebar.classList.contains('active')) {
+                sidebar.classList.remove('active');
+            }
         });
 
         // Load blog posts
         async function loadBlogPosts() {
             try {
-                // Simulate network delay for demo
-                await new Promise(resolve => setTimeout(resolve, 800));
-                
-                // In a real implementation, you would fetch from:
-                // const response = await fetch('posts/index.txt');
-                // const postListText = await response.text();
-                
+                // Fetch post index
                 const postIndexUrl = "posts/index.txt";
                 const response = await fetch(postIndexUrl);
                 const postListText = await response.text();
@@ -454,37 +397,24 @@
 
         function generateSidebar(postUrls) {
             postList.innerHTML = '';
-            postListMobile.innerHTML = '';
             
             postUrls.forEach(url => {
                 const listItem = document.createElement('li');
-                const mobileListItem = document.createElement('li');
                 
                 const link = document.createElement('a');
                 link.href = '#';
                 link.textContent = url.replace('.md', '').replace(/-/g, ' ');
                 link.dataset.post = url;
                 
-                const mobileLink = link.cloneNode(true);
-                
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
                     loadBlogPost(url);
                     setActivePost(url);
-                });
-                
-                mobileLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    loadBlogPost(url);
-                    setActivePost(url);
-                    sidebarMobile.classList.remove('active');
+                    sidebar.classList.remove('active');
                 });
                 
                 listItem.appendChild(link);
-                mobileListItem.appendChild(mobileLink);
-                
                 postList.appendChild(listItem);
-                postListMobile.appendChild(mobileListItem);
             });
         }
 
@@ -502,13 +432,23 @@
                 
                 const html = renderMarkdown(markdown);
                 content.innerHTML = `<div class="post">${html}</div>`;
+                
+                // Add event listeners to internal post links
+                document.querySelectorAll('.post a[data-internal]').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const postName = this.getAttribute('href').replace('.md', '') + '.md';
+                        loadBlogPost(postName);
+                        setActivePost(postName);
+                        sidebar.classList.remove('active');
+                    });
+                });
             } catch (error) {
                 console.error('Error loading post:', error);
                 content.innerHTML = `
                     <div class="post">
                         <h1>Error Loading Post</h1>
                         <p>The requested post could not be loaded: ${error.message}</p>
-                        <p>Please try again or select another post from the sidebar.</p>
                     </div>
                 `;
             }
@@ -569,10 +509,18 @@
                 } else if (line.startsWith('[')) {
                     const linkText = line.slice(1, line.indexOf(']'));
                     const linkHref = line.slice(line.indexOf('(') + 1, line.indexOf(')'));
-                    html += `<a href="${linkHref}">${linkText}</a>`;
+                    
+                    // Detect internal links to other posts
+                    if (linkHref.endsWith('.md')) {
+                        html += `<a href="${linkHref}" data-internal="true">${linkText}</a>`;
+                    } else {
+                        html += `<a href="${linkHref}" target="_blank">${linkText}</a>`;
+                    }
                 } else if (line.trim() === '') {
-                    // Skip empty lines or add spacing
-                    html += '<br>';
+                    // Skip empty lines
+                    if (!inList && !inBlockquote) {
+                        html += '<br>';
+                    }
                 } else {
                     html += `<p>${line}</p>`;
                 }
@@ -588,7 +536,7 @@
 
         function setActivePost(postUrl) {
             // Remove active class from all items
-            const items = document.querySelectorAll('#post-list li, #post-list-mobile li');
+            const items = document.querySelectorAll('#post-list li');
             items.forEach(item => item.classList.remove('active'));
             
             // Find the matching item and add active class
@@ -600,16 +548,11 @@
 
         function showUnderConstruction() {
             content.innerHTML = `
-                <div class="construction">
+                <div class="post">
                     <h1>UNDER CONSTRUCTION</h1>
+                    <p>Content will be available soon.</p>
                 </div>
             `;
-            
-            // Add a placeholder to the sidebar
-            const listItem = document.createElement('li');
-            listItem.className = 'active';
-            listItem.textContent = 'Under Construction';
-            postList.appendChild(listItem);
         }
 
         function showErrorMessage() {
