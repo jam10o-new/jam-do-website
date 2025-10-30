@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Pages Editor</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f6f8fa;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #24292e;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #24292e;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d1d5da;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #0366d6;
+            box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 200px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="checkbox"] {
+            width: auto;
+        }
+
+        button {
+            background-color: #2ea44f;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #2c974b;
+        }
+
+        button:disabled {
+            background-color: #94d3a2;
+            cursor: not-allowed;
+        }
+
+        .file-upload {
+            border: 2px dashed #d1d5da;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .file-upload:hover {
+            border-color: #0366d6;
+        }
+
+        .file-upload.dragover {
+            border-color: #0366d6;
+            background-color: #f6f8fa;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .status.success {
+            background-color: #dafbe1;
+            border: 1px solid #2ea44f;
+            color: #1a7f37;
+            display: block;
+        }
+
+        .status.error {
+            background-color: #ffebe9;
+            border: 1px solid #cf222e;
+            color: #cf222e;
+            display: block;
+        }
+
+        .status.info {
+            background-color: #ddf4ff;
+            border: 1px solid #0969da;
+            color: #0969da;
+            display: block;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .file-list {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GitHub Pages Editor</h1>
+        
+        <form id="editorForm">
+            <div class="form-group">
+                <label for="apiKey">GitHub Personal Access Token</label>
+                <input type="password" id="apiKey" placeholder="ghp_..." />
+            </div>
+
+            <div class="form-group">
+                <label for="filePath">File Path</label>
+                <input type="text" id="filePath" placeholder="_posts/2024-01-01-my-post.md" required />
+            </div>
+
+            <div class="form-group">
+                <label for="fileContent">File Content (Markdown)</label>
+                <textarea id="fileContent" placeholder="Enter your markdown content here..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Or Upload Files</label>
+                <div class="file-upload" id="fileUpload">
+                    <p>Click to select files or drag and drop</p>
+                    <p><small>For multiple files, the file path above will be used as directory</small></p>
+                </div>
+                <div class="file-list" id="fileList"></div>
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="updateIndex" checked />
+                    <label for="updateIndex">Update index file with new posts</label>
+                </div>
+            </div>
+
+            <button type="submit" id="submitBtn">Commit to GitHub</button>
+        </form>
+
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        // Configuration - Update these constants as needed
+        const CONFIG = {
+            // Repository details
+            OWNER: 'jam10o-new',      // Update with your GitHub username
+            REPO: 'jam-do-website',           // Update with your repository name
+            BRANCH: 'main',              // Update with your branch (main, gh-pages, etc.)
+            
+            // File paths
+            INDEX_FILE: 'posts/index.txt',      // Path to your index file
+            POSTS_DIR: 'posts/',        // Directory where posts are stored
+            
+            // Commit messages
+            COMMIT_PREFIX: 'Editor: ',
+            NEW_POST_MESSAGE: 'Add new post',
+            UPDATE_MESSAGE: 'Update content',
+            MULTI_FILE_MESSAGE: 'Upload multiple files'
+        };
+
+        // DOM Elements
+        const apiKeyInput = document.getElementById('apiKey');
+        const filePathInput = document.getElementById('filePath');
+        const fileContentInput = document.getElementById('fileContent');
+        const fileUpload = document.getElementById('fileUpload');
+        const fileList = document.getElementById('fileList');
+        const updateIndexCheckbox = document.getElementById('updateIndex');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusDiv = document.getElementById('status');
+        const form = document.getElementById('editorForm');
+
+        // State
+        let selectedFiles = [];
+
+        // Initialize - Load saved API key
+        function initialize() {
+            const savedApiKey = localStorage.getItem('github_pages_editor_api_key');
+            if (savedApiKey) {
+                apiKeyInput.value = savedApiKey;
+            }
+
+            // Load repository info from localStorage if available
+            const savedOwner = localStorage.getItem('github_pages_editor_owner');
+            const savedRepo = localStorage.getItem('github_pages_editor_repo');
+            const savedBranch = localStorage.getItem('github_pages_editor_branch');
+            
+            if (savedOwner) CONFIG.OWNER = savedOwner;
+            if (savedRepo) CONFIG.REPO = savedRepo;
+            if (savedBranch) CONFIG.BRANCH = savedBranch;
+        }
+
+        // File upload handling
+        fileUpload.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.onchange = (e) => handleFileSelection(e.target.files);
+            input.click();
+        });
+
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.classList.add('dragover');
+        });
+
+        fileUpload.addEventListener('dragleave', () => {
+            fileUpload.classList.remove('dragover');
+        });
+
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.classList.remove('dragover');
+            handleFileSelection(e.dataTransfer.files);
+        });
+
+        function handleFileSelection(files) {
+            selectedFiles = Array.from(files);
+            updateFileList();
+            
+            // If multiple files, treat filePath as directory
+            if (selectedFiles.length > 1 && !filePathInput.value.endsWith('/')) {
+                filePathInput.value += '/';
+            }
+            
+            // Disable content input when files are selected
+            fileContentInput.disabled = selectedFiles.length > 0;
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <span>${file.name}</span>
+                    <button type="button" onclick="removeFile(${index})" style="color: #cf222e; border: none; background: none; cursor: pointer;">×</button>
+                `;
+                fileList.appendChild(fileItem);
+            });
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+            if (selectedFiles.length === 0) {
+                fileContentInput.disabled = false;
+            }
+        }
+
+        // Form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await handleSubmit();
+        });
+
+        async function handleSubmit() {
+            const apiKey = apiKeyInput.value.trim();
+            const filePath = filePathInput.value.trim();
+            
+            if (!apiKey) {
+                showStatus('Please enter your GitHub Personal Access Token', 'error');
+                return;
+            }
+
+            if (!filePath) {
+                showStatus('Please enter a file path', 'error');
+                return;
+            }
+
+            if (selectedFiles.length === 0 && !fileContentInput.value.trim()) {
+                showStatus('Please enter file content or select files to upload', 'error');
+                return;
+            }
+
+            // Save API key to localStorage
+            localStorage.setItem('github_pages_editor_api_key', apiKey);
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Committing...';
+
+            try {
+                if (selectedFiles.length > 0) {
+                    await uploadMultipleFiles();
+                } else {
+                    await uploadSingleFile();
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Commit to GitHub';
+            }
+        }
+
+        async function uploadSingleFile() {
+            const filePath = filePathInput.value.trim();
+            const content = fileContentInput.value;
+            const updateIndex = updateIndexCheckbox.checked;
+            const isNewPost = filePath.includes(CONFIG.POSTS_DIR);
+
+            // Upload the main file
+            await createOrUpdateFile(filePath, content, isNewPost ? CONFIG.NEW_POST_MESSAGE : CONFIG.UPDATE_MESSAGE);
+
+            // Update index if needed
+            if (updateIndex && isNewPost) {
+                try {
+                    await updateIndexFile(filePath);
+                    showStatus('File created and index updated successfully!', 'success');
+                } catch (error) {
+                    showStatus(`File created but index update failed: ${error.message}`, 'error');
+                }
+            } else {
+                showStatus('File updated successfully!', 'success');
+            }
+        }
+
+        async function uploadMultipleFiles() {
+            const basePath = filePathInput.value.trim();
+            
+            for (const file of selectedFiles) {
+                const filePath = basePath.endsWith('/') ? basePath + file.name : basePath;
+                const content = await readFileAsBase64(file);
+                await createOrUpdateFile(filePath, content, CONFIG.MULTI_FILE_MESSAGE, true);
+            }
+            
+            showStatus(`${selectedFiles.length} files uploaded successfully!`, 'success');
+            selectedFiles = [];
+            updateFileList();
+        }
+
+        // GitHub API functions
+        async function createOrUpdateFile(path, content, customMessage, isBase64 = false) {
+            const apiKey = apiKeyInput.value.trim();
+            const url = `https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/contents/${path}`;
+            
+            // Get existing file SHA if it exists
+            let sha = null;
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `token ${apiKey}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    sha = data.sha;
+                }
+            } catch (error) {
+                // File doesn't exist, which is fine for new files
+            }
+
+            const commitMessage = CONFIG.COMMIT_PREFIX + (customMessage || (sha ? 'Update file' : 'Create file'));
+            
+            const body = {
+                message: commitMessage,
+                content: isBase64 ? content : btoa(unescape(encodeURIComponent(content))),
+                branch: CONFIG.BRANCH
+            };
+
+            if (sha) {
+                body.sha = sha;
+            }
+
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${apiKey}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `HTTP ${response.status}`);
+            }
+
+            return await response.json();
+        }
+
+        async function updateIndexFile(newPostPath) {
+            // Get current index file
+            const indexUrl = `https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/contents/${CONFIG.INDEX_FILE}`;
+            const apiKey = apiKeyInput.value.trim();
+            
+            const response = await fetch(indexUrl, {
+                headers: {
+                    'Authorization': `token ${apiKey}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch index file');
+            }
+
+            const data = await response.json();
+            const currentContent = decodeURIComponent(escape(atob(data.content)));
+            
+            // Simple index update - add a new line with the post
+            const postName = newPostPath.split('/').pop().replace('.md', '');
+            const newEntry = `\n- [${postName}](${newPostPath})`;
+            const updatedContent = currentContent + newEntry;
+
+            // Update index file
+            await createOrUpdateFile(CONFIG.INDEX_FILE, updatedContent, 'Update index with new post');
+        }
+
+        // Utility functions
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    // Remove data URL prefix
+                    const base64 = e.target.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function showStatus(message, type = 'info') {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        // Make removeFile function globally available for the inline onclick handler
+        window.removeFile = removeFile;
+
+        // Initialize the editor
+        initialize();
+    </script>
+</body>
+</html>
