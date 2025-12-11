@@ -9,7 +9,7 @@
   .row{display:flex;height:100%}
   #sidebar{width:340px;background:#111;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
   #main{flex:1;display:flex;flex-direction:column;min-width:0}
-  #canvasWrap{flex:1;padding:12px;box-sizing:border-box;min-height:0} /* allow flex children to shrink */
+  #canvasWrap{flex:1;padding:12px;box-sizing:border-box;min-height:0}
   #draw{width:100%;height:100%;display:block}
   #footer{height:320px;background:#0b0b0b;border-top:1px solid #222;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px}
   button{background:#1a1a1a;border:1px solid #333;color:#ddd;padding:6px 8px;cursor:pointer}
@@ -22,7 +22,6 @@
   .list{max-height:150px;overflow:auto;margin-top:6px}
   .item{display:flex;gap:6px;align-items:center;margin:4px 0}
   .item button{padding:2px 6px}
-  /* Unified timeline */
   #timelineContainer{flex:1;overflow:auto;border:1px solid #222;position:relative;background:#050505;min-height:160px}
   #timelineCanvas{height:160px;display:block;background:#050505}
   .global-controls{display:flex;gap:8px;align-items:center;margin-top:4px}
@@ -30,6 +29,11 @@
   .timeline-controls input[type=number]{width:80px;background:#1a1a1a;border:1px solid #333;color:#ddd;padding:2px 4px}
   .live-indicator{color:#ff6b6b;font-size:10px;animation:pulse 1s infinite}
   @keyframes pulse{0%{opacity:1}50%{opacity:0.5}100%{opacity:1}}
+  .file-input-ui{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+  .file-input-ui input[type=file]{display:none}
+  .file-input-ui button{font-size:11px;padding:4px 6px}
+  .progress-bar{height:3px;background:#333;width:100%;margin-top:2px}
+  .progress-bar-inner{height:100%;background:#4CAF50;width:0%;transition:width 0.1s}
 </style>
 </head>
 <body>
@@ -44,6 +48,7 @@
         <button data-mk="delay">Delay</button>
         <button data-mk="pan">Pan</button>
         <button data-mk="compressor">Comp</button>
+        <button data-mk="input">Input</button>
       </div>
       <div class="list" id="nodeList"></div>
     </div>
@@ -116,16 +121,13 @@
 </div>
 
 <script>
-/* Fixed single-file DAW — unified timeline
-   Key fixes:
-   - All resizing of canvases (draw + timeline) is done only in resize() and updateTimelineSize()
-   - No layout reads/writes inside rendering/tick loop
-   - timelineCanvas internal buffer resized only when zoom/durations/resize changes
+/* Fixed single-file DAW — unified timeline with enhanced features:
+   - Audio input nodes (file/mic)
+   - Smooth parameter interpolation to reduce noise
 */
 
-/* Fixed single-file DAW — unified timeline with enhanced signal generator binding */
-
 const TIMESTEP = 16;
+const SMOOTH_TIME_CONSTANT = 0.02; // Smoothing time constant for parameter changes
 
 const drawCanvas = document.getElementById('draw');
 const drawCtx = drawCanvas.getContext('2d');
@@ -159,35 +161,86 @@ function logInfo(s){ infoBox.textContent = s; }
 function uid(prefix='id'){ return prefix + Math.random().toString(16).slice(2,9); }
 function getCanvasById(id){ return canvases.find(c=>c.id===id); }
 
-// ---------------------- Audio node helpers ----------------------
+// ---------------------- Enhanced Audio node helpers ----------------------
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioContextClass();
 
+// Smooth parameter application using setTargetAtTime
+function applySmoothValue(param, value, audioCtx) {
+  if (param && typeof param.setTargetAtTime === 'function') {
+    param.setTargetAtTime(value, audioCtx.currentTime, SMOOTH_TIME_CONSTANT);
+    return true;
+  } else if (param && typeof param.setValueAtTime === 'function') {
+    param.setValueAtTime(value, audioCtx.currentTime);
+    return true;
+  }
+  return false;
+}
+
 function makeAudioNode(type){
   let node = null;
+  let wrapper = null;
+  
   try{
     switch(type){
-      case 'osc': node = audioCtx.createOscillator(); node.type='sine'; node.start(); break;
-      case 'gain': node = audioCtx.createGain(); break;
-      case 'filter': node = audioCtx.createBiquadFilter(); break;
-      case 'delay': node = audioCtx.createDelay(); break;
-      case 'pan': node = audioCtx.createStereoPanner(); break;
-      case 'compressor': node = audioCtx.createDynamicsCompressor(); break;
+      case 'osc': 
+        node = audioCtx.createOscillator(); 
+        node.type='sine'; 
+        node.start(); 
+        break;
+      case 'gain': 
+        node = audioCtx.createGain(); 
+        break;
+      case 'filter': 
+        node = audioCtx.createBiquadFilter(); 
+        break;
+      case 'delay': 
+        node = audioCtx.createDelay(); 
+        break;
+      case 'pan': 
+        node = audioCtx.createStereoPanner(); 
+        break;
+      case 'compressor': 
+        node = audioCtx.createDynamicsCompressor(); 
+        break;
+      case 'input':
+        // Create a wrapper for input nodes
+        wrapper = {
+          type: 'input',
+          source: null,
+          gainNode: audioCtx.createGain(),
+          playbackRate: audioCtx.createGain(),
+          isPlaying: false,
+          isMicrophone: false,
+          buffer: null,
+          startTime: 0,
+          offset: 0,
+          duration: 0
+        };
+        // The actual node is the gain node
+        node = wrapper.gainNode;
+        break;
     }
   }catch(e){
     logInfo('audio node creation failed: '+e.message); return null;
   }
-  if(!node) return null;
+  
+  if(!node && !wrapper) return null;
+  
   const id = 'N'+(nodeCounter++);
-  audioNodes.set(id, {node, type});
+  audioNodes.set(id, {node, type, wrapper});
   rebuildNodeList();
   rebuildAllBindings();
   return id;
 }
 
 function connectNode(srcId, destId){
-  const src = audioNodes.get(srcId)?.node;
+  const srcEntry = audioNodes.get(srcId);
+  if (!srcEntry) return;
+  
+  const src = srcEntry.wrapper ? srcEntry.wrapper.gainNode : srcEntry.node;
   const target = destId === 'dest' ? audioCtx.destination : audioNodes.get(destId)?.node;
+  
   if(!src || !target) return;
   try{
     src.connect(target);
@@ -199,7 +252,8 @@ function connectNode(srcId, destId){
 
 function disconnectConnection(conn){
   try{
-    const src = audioNodes.get(conn.source)?.node;
+    const srcEntry = audioNodes.get(conn.source);
+    const src = srcEntry?.wrapper ? srcEntry.wrapper.gainNode : srcEntry?.node;
     const tgt = conn.target==='dest' ? audioCtx.destination : audioNodes.get(conn.target)?.node;
     if(src && tgt) src.disconnect(tgt);
   }catch(e){}
@@ -209,16 +263,41 @@ function disconnectConnection(conn){
 }
 
 // ---------------------- Enhanced Bindable param helpers ----------------------
-function getNumericParams(nodeObj){
+function getNumericParams(nodeObj, wrapper){
   const out = [];
-  const candidates = ['frequency','detune','gain','Q','delayTime','pan','threshold','knee','ratio','attack','release','offset'];
+  const candidates = ['frequency','detune','gain','Q','delayTime','pan','threshold','knee','ratio','attack','release','offset','playbackRate','volume'];
+  
+  // If it's an input node wrapper, add its special params
+  if (wrapper && wrapper.type === 'input') {
+    candidates.push('volume', 'playbackRate', 'position');
+  }
+  
   for(const k of candidates){
-    if(k in nodeObj){
-      const v = nodeObj[k];
-      const isAudioParam = (typeof v === 'object' && v !== null && 'value' in v);
-      if(isAudioParam || typeof v === 'number') out.push({key:k,label:k,isAudioParam});
+    let value = null;
+    let isAudioParam = false;
+    
+    if (wrapper && wrapper.type === 'input') {
+      // Handle input node special parameters
+      if (k === 'volume' && wrapper.gainNode && wrapper.gainNode.gain) {
+        value = wrapper.gainNode.gain;
+        isAudioParam = true;
+      } else if (k === 'playbackRate' && wrapper.playbackRate) {
+        value = wrapper.playbackRate.gain;
+        isAudioParam = true;
+      } else if (k === 'position') {
+        value = wrapper.offset || 0;
+        isAudioParam = false;
+      }
+    } else if(k in nodeObj){
+      value = nodeObj[k];
+      isAudioParam = (typeof value === 'object' && value !== null && 'value' in value);
+    }
+    
+    if(value !== null) {
+      out.push({key:k, label:k, isAudioParam});
     }
   }
+  
   return out;
 }
 
@@ -247,16 +326,19 @@ function convertPointToParam(norm, pname){
     return norm;
   }
   // Signal generator parameters
-  if(pname === 'freq') return 0.1 + norm * 20; // 0.1Hz to 20.1Hz
-  if(pname === 'amp') return norm * 5; // 0 to 5
-  if(pname === 'bias') return -2 + norm * 4; // -2 to +2
+  if(pname === 'freq') return 0.1 + norm * 20;
+  if(pname === 'amp') return norm * 5;
+  if(pname === 'bias') return -2 + norm * 4;
+  // Input node parameters
+  if(pname === 'volume') return norm * 2; // 0 to 2
+  if(pname === 'playbackRate') return 0.25 + norm * 3; // 0.25 to 3.25
+  if(pname === 'position') return norm; // 0 to 1
   return norm;
 }
 
 function applyValueToTarget(target, value){
   if(!target) return;
   
-  // Parse target format: type:id:param
   const parts = target.split(':');
   if(parts.length < 2) return;
   
@@ -266,7 +348,6 @@ function applyValueToTarget(target, value){
   
   switch(type){
     case 'canvas':
-      // canvas:C0:speed or canvas:C0:duration
       const c = getCanvasById(id);
       if(!c) return;
       if(param === 'speed') c.speed = Math.max(0.001, Number(value) || 0.001);
@@ -279,22 +360,42 @@ function applyValueToTarget(target, value){
       break;
       
     case 'node':
-      // node:N1:gain
       const nodeEntry = audioNodes.get(id);
       if(!nodeEntry) return;
+      
+      // Handle input node special parameters
+      if (nodeEntry.wrapper && nodeEntry.wrapper.type === 'input') {
+        const wrapper = nodeEntry.wrapper;
+        if (param === 'volume' && wrapper.gainNode && wrapper.gainNode.gain) {
+          applySmoothValue(wrapper.gainNode.gain, value, audioCtx);
+        } else if (param === 'playbackRate' && wrapper.playbackRate && wrapper.playbackRate.gain) {
+          applySmoothValue(wrapper.playbackRate.gain, value, audioCtx);
+        } else if (param === 'position' && wrapper.buffer) {
+          // Seek to position in audio file
+          wrapper.offset = Math.max(0, Math.min(1, value)) * wrapper.duration;
+          if (wrapper.isPlaying && wrapper.source) {
+            wrapper.source.stop();
+            wrapper.startTime = audioCtx.currentTime;
+            wrapper.source = audioCtx.createBufferSource();
+            wrapper.source.buffer = wrapper.buffer;
+            wrapper.source.connect(wrapper.playbackRate);
+            wrapper.playbackRate.connect(wrapper.gainNode);
+            wrapper.source.start(0, wrapper.offset);
+          }
+        }
+        return;
+      }
+      
       const node = nodeEntry.node;
       const prop = node[param];
-      if(prop && typeof prop.setValueAtTime === 'function'){
-        try{ prop.setValueAtTime(value, audioCtx.currentTime); }catch(e){}
-      } else if(prop !== undefined && typeof prop === 'number'){
-        try{ node[param] = value; }catch(e){}
-      } else {
-        try{ node[param] = value; }catch(e){}
+      if (prop) {
+        applySmoothValue(prop, value, audioCtx);
+      } else if (param !== undefined) {
+        try { node[param] = value; } catch(e){}
       }
       break;
       
     case 'sig':
-      // sig:S0:freq or sig:S0:amp or sig:S0:bias
       const sig = signalGens.get(id);
       if(!sig || !param) return;
       if(param in sig.params){
@@ -351,15 +452,12 @@ function evaluateSignals(globalSeconds){
       let mappedValue;
       
       if(type === 'canvas'){
-        // Special mapping for canvas properties
         if(param === 'speed') mappedValue = 0.1 + norm * 3.9;
         else if(param === 'duration') mappedValue = 100 + Math.round(norm * 60000);
         else mappedValue = norm;
       } else if(type === 'node'){
-        // Node parameters use convertPointToParam
         mappedValue = convertPointToParam(norm, param);
       } else if(type === 'sig'){
-        // Signal generator parameters use direct mapping based on param type
         if(param === 'freq') mappedValue = 0.1 + norm * 20;
         else if(param === 'amp') mappedValue = norm * 5;
         else if(param === 'bias') mappedValue = -2 + norm * 4;
@@ -435,6 +533,8 @@ function commitStrokeToCanvas(canvas, stroke, offsetMs){
   const endG = offsetMs + endLocal;
   const startF = Math.floor(startG / TIMESTEP);
   const endF = Math.floor(endG / TIMESTEP);
+  
+  // Add interpolation between frames for smoother transitions
   for(let gf = startF; gf <= endF; gf++){
     const gms = gf * TIMESTEP;
     const rel = gms - startG;
@@ -448,6 +548,7 @@ function commitStrokeToCanvas(canvas, stroke, offsetMs){
     const y = A.y + (B.y - A.y) * k;
     frames.set(gf, {x,y});
   }
+  
   logInfo(`committed ${canvas.id} [${startF}..${endF}] frames`);
   updateTimelineSize();
 }
@@ -686,13 +787,201 @@ function rebuildNodeList(){
   const el = document.getElementById('nodeList'); el.innerHTML = '';
   if(audioNodes.size===0){ el.innerHTML = '<div class="mono small" style="padding:8px">No nodes</div>'; return; }
   for(const [id,info] of audioNodes){
-    const div = document.createElement('div'); div.className='item'; div.style.display='flex'; div.style.justifyContent='space-between'; div.style.padding='6px';
+    const div = document.createElement('div'); div.className='item'; div.style.display='flex'; div.style.flexDirection='column'; div.style.padding='6px';
+    
+    const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.marginBottom='6px';
     const left = document.createElement('div'); left.textContent = id+' ('+info.type+')'; left.style.flex='1';
+    
+    // Special UI for input nodes
+    if (info.type === 'input' && info.wrapper) {
+      const wrapper = info.wrapper;
+      const fileUI = document.createElement('div'); fileUI.className='file-input-ui';
+      
+      // File input button
+      const fileBtn = document.createElement('button'); fileBtn.textContent = wrapper.buffer ? 'Change File' : 'Load File';
+      fileBtn.addEventListener('click', () => {
+        const input = document.createElement('input'); input.type='file'; input.accept='audio/*';
+        input.onchange = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            audioCtx.decodeAudioData(ev.target.result, (buffer) => {
+              wrapper.buffer = buffer;
+              wrapper.duration = buffer.duration;
+              wrapper.offset = 0;
+              
+              // Stop current playback if playing
+              if (wrapper.source) {
+                wrapper.source.stop();
+                wrapper.source = null;
+              }
+              
+              // Create new source
+              wrapper.source = audioCtx.createBufferSource();
+              wrapper.source.buffer = buffer;
+              wrapper.source.connect(wrapper.playbackRate);
+              wrapper.playbackRate.connect(wrapper.gainNode);
+              
+              // Auto-play if was playing before
+              if (wrapper.isPlaying) {
+                wrapper.source.start(0, wrapper.offset);
+                wrapper.startTime = audioCtx.currentTime;
+              }
+              
+              rebuildNodeList();
+              logInfo(`Loaded: ${file.name} (${buffer.duration.toFixed(2)}s)`);
+            }, (err) => {
+              logInfo('Failed to decode audio: ' + err.message);
+            });
+          };
+          reader.readAsArrayBuffer(file);
+        };
+        input.click();
+      });
+      
+      // Mic button
+      const micBtn = document.createElement('button'); 
+      micBtn.textContent = wrapper.isMicrophone ? 'Stop Mic' : 'Use Mic';
+      micBtn.addEventListener('click', () => {
+        if (!wrapper.isMicrophone) {
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then((stream) => {
+              wrapper.isMicrophone = true;
+              wrapper.buffer = null;
+              
+              // Stop any existing source
+              if (wrapper.source) {
+                wrapper.source.stop();
+                wrapper.source.disconnect();
+              }
+              
+              // Create media stream source
+              wrapper.source = audioCtx.createMediaStreamSource(stream);
+              wrapper.source.connect(wrapper.playbackRate);
+              wrapper.playbackRate.connect(wrapper.gainNode);
+              wrapper.isPlaying = true;
+              
+              rebuildNodeList();
+              logInfo('Microphone active');
+            })
+            .catch((err) => {
+              logInfo('Microphone access denied: ' + err.message);
+            });
+        } else {
+          wrapper.isMicrophone = false;
+          if (wrapper.source) {
+            wrapper.source.disconnect();
+            wrapper.source = null;
+          }
+          rebuildNodeList();
+          logInfo('Microphone stopped');
+        }
+      });
+      
+      // Play/Pause button
+      const playBtn = document.createElement('button');
+      if (wrapper.isMicrophone) {
+        playBtn.textContent = '🔴 Live';
+        playBtn.disabled = true;
+      } else {
+        playBtn.textContent = wrapper.isPlaying ? 'Pause' : 'Play';
+        playBtn.addEventListener('click', () => {
+          if (!wrapper.buffer) {
+            logInfo('Load an audio file first');
+            return;
+          }
+          
+          if (wrapper.isPlaying) {
+            // Pause
+            if (wrapper.source) {
+              wrapper.source.stop();
+              wrapper.offset += audioCtx.currentTime - wrapper.startTime;
+            }
+            wrapper.isPlaying = false;
+          } else {
+            // Play
+            wrapper.source = audioCtx.createBufferSource();
+            wrapper.source.buffer = wrapper.buffer;
+            wrapper.source.connect(wrapper.playbackRate);
+            wrapper.playbackRate.connect(wrapper.gainNode);
+            wrapper.source.start(0, wrapper.offset);
+            wrapper.startTime = audioCtx.currentTime;
+            wrapper.isPlaying = true;
+            
+            // Handle end of playback
+            wrapper.source.onended = () => {
+              if (wrapper.isPlaying) {
+                wrapper.offset = 0;
+                wrapper.startTime = audioCtx.currentTime;
+                wrapper.source = audioCtx.createBufferSource();
+                wrapper.source.buffer = wrapper.buffer;
+                wrapper.source.connect(wrapper.playbackRate);
+                wrapper.playbackRate.connect(wrapper.gainNode);
+                wrapper.source.start(0, wrapper.offset);
+              }
+            };
+          }
+          rebuildNodeList();
+        });
+      }
+      
+      // Reset button
+      const resetBtn = document.createElement('button');
+      resetBtn.textContent = 'Reset';
+      resetBtn.addEventListener('click', () => {
+        wrapper.offset = 0;
+        if (wrapper.isPlaying && wrapper.source && !wrapper.isMicrophone) {
+          wrapper.source.stop();
+          wrapper.source = audioCtx.createBufferSource();
+          wrapper.source.buffer = wrapper.buffer;
+          wrapper.source.connect(wrapper.playbackRate);
+          wrapper.playbackRate.connect(wrapper.gainNode);
+          wrapper.source.start(0, wrapper.offset);
+          wrapper.startTime = audioCtx.currentTime;
+        }
+        rebuildNodeList();
+      });
+      
+      fileUI.appendChild(fileBtn);
+      fileUI.appendChild(micBtn);
+      fileUI.appendChild(playBtn);
+      fileUI.appendChild(resetBtn);
+      
+      // Progress bar for audio file
+      if (wrapper.buffer && !wrapper.isMicrophone) {
+        const progressDiv = document.createElement('div'); progressDiv.className='progress-bar';
+        const progressInner = document.createElement('div'); progressInner.className='progress-bar-inner';
+        const progress = Math.min(1, wrapper.offset / wrapper.duration);
+        progressInner.style.width = `${progress * 100}%`;
+        progressDiv.appendChild(progressInner);
+        fileUI.appendChild(progressDiv);
+      }
+      
+      div.appendChild(fileUI);
+    }
+    
     const conn = document.createElement('select'); conn.innerHTML = '<option value="">(connect)</option><option value="dest">→ dest</option>';
     for(const [id2] of audioNodes){ if(id2===id) continue; const opt=document.createElement('option'); opt.value=id2; opt.textContent='→ '+id2; conn.appendChild(opt); }
     conn.addEventListener('change', ()=>{ if(conn.value) connectNode(id, conn.value); conn.value=''; });
-    const del = document.createElement('button'); del.textContent='del'; del.addEventListener('click', ()=>{ audioNodes.delete(id); rebuildNodeList(); rebuildAllBindings(); });
-    div.appendChild(left); div.appendChild(conn); div.appendChild(del); el.appendChild(div);
+    
+    const del = document.createElement('button'); del.textContent='del'; del.addEventListener('click', ()=>{
+      // Clean up input node resources
+      if (info.type === 'input' && info.wrapper) {
+        if (info.wrapper.source) {
+          info.wrapper.source.stop();
+          info.wrapper.source.disconnect();
+        }
+      }
+      audioNodes.delete(id); 
+      rebuildNodeList(); 
+      rebuildAllBindings(); 
+    });
+    
+    row.appendChild(left); row.appendChild(conn); row.appendChild(del); 
+    div.appendChild(row);
+    el.appendChild(div);
   }
 }
 
@@ -729,7 +1018,7 @@ function rebuildSigList(){
     
     // Audio node parameters
     for(const [nid,info] of audioNodes){ 
-      const params = getNumericParams(info.node); 
+      const params = getNumericParams(info.node, info.wrapper); 
       for(const p of params){ 
         const opt=document.createElement('option'); 
         opt.value = `node:${nid}:${p.key}`; 
@@ -793,7 +1082,7 @@ function rebuildAllBindings(){
   
   // Audio node parameters
   for(const [id, info] of audioNodes){
-    const params = getNumericParams(info.node);
+    const params = getNumericParams(info.node, info.wrapper);
     for(const p of params){
       const opt = document.createElement('option'); opt.value = `node:${id}:${p.key}`; opt.textContent = `node:${id}:${p.key}`;
       xSel.appendChild(opt); ySel.appendChild(opt.cloneNode(true));
@@ -860,7 +1149,7 @@ window.addEventListener('pointerdown', ()=>{ if(audioCtx.state==='suspended') au
 // ---------------------- Enhanced Export/Import ----------------------
 document.getElementById('exportBtn').addEventListener('click', ()=>{
   const data = {
-    version:2, // bumped version to indicate new format
+    version: 3, // bumped version for new features
     canvases: canvases.map(c=>({id:c.id,color:c.color,duration:c.duration,frames:Array.from(c.frames.entries()),xBind:c.xBind,yBind:c.yBind,speed:c.speed,isLooping:c.isLooping,isMuted:c.isMuted,currentTime:c.currentTime})),
     signals: Array.from(signalGens.values()).map(s=>({id:s.id,type:s.type,params:s.params,bindings:s.bindings})),
     nodes: Array.from(audioNodes.entries()).map(([id,info])=>({id,type:info.type})),
