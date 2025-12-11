@@ -34,6 +34,10 @@
   .file-input-ui button{font-size:11px;padding:4px 6px}
   .progress-bar{height:3px;background:#333;width:100%;margin-top:2px}
   .progress-bar-inner{height:100%;background:#4CAF50;width:0%;transition:width 0.1s}
+  .connection-item{display:flex;justify-content:space-between;align-items:center;padding:6px;border-bottom:1px solid #222}
+  .connection-label{flex:1;font-size:11px}
+  .connection-controls{display:flex;gap:4px}
+  .recording-indicator{color:#ff6b6b;font-size:10px;animation:pulse 0.5s infinite}
 </style>
 </head>
 <body>
@@ -51,6 +55,11 @@
         <button data-mk="input">Input</button>
       </div>
       <div class="list" id="nodeList"></div>
+    </div>
+
+    <div class="section">
+      <div class="mono">CONNECTIONS</div>
+      <div class="list" id="connectionList"></div>
     </div>
 
     <div class="section">
@@ -122,12 +131,13 @@
 
 <script>
 /* Fixed single-file DAW — unified timeline with enhanced features:
-   - Audio input nodes (file/mic)
-   - Smooth parameter interpolation to reduce noise
+   - Audio input nodes (file/mic) with loopable buffers
+   - Connection view with disconnect functionality
+   - Smooth parameter interpolation
 */
 
 const TIMESTEP = 16;
-const SMOOTH_TIME_CONSTANT = 0.02; // Smoothing time constant for parameter changes
+const SMOOTH_TIME_CONSTANT = 0.02;
 
 const drawCanvas = document.getElementById('draw');
 const drawCtx = drawCanvas.getContext('2d');
@@ -211,11 +221,16 @@ function makeAudioNode(type){
           gainNode: audioCtx.createGain(),
           playbackRate: audioCtx.createGain(),
           isPlaying: false,
+          isRecording: false,
+          isLooping: false,
           isMicrophone: false,
           buffer: null,
+          recordedChunks: [],
+          mediaRecorder: null,
           startTime: 0,
           offset: 0,
-          duration: 0
+          duration: 0,
+          stream: null
         };
         // The actual node is the gain node
         node = wrapper.gainNode;
@@ -231,6 +246,7 @@ function makeAudioNode(type){
   audioNodes.set(id, {node, type, wrapper});
   rebuildNodeList();
   rebuildAllBindings();
+  rebuildConnectionList();
   return id;
 }
 
@@ -244,9 +260,17 @@ function connectNode(srcId, destId){
   if(!src || !target) return;
   try{
     src.connect(target);
-    connections.push({source:srcId, target:destId});
-    rebuildConnectionList();
-    logInfo(srcId+' → '+destId);
+    
+    // Check if connection already exists
+    const existingConn = connections.find(c => c.source === srcId && c.target === destId);
+    if (!existingConn) {
+      connections.push({source:srcId, target:destId});
+      rebuildConnectionList();
+      rebuildNodeList();
+      logInfo(srcId+' → '+destId);
+    } else {
+      logInfo('Connection already exists');
+    }
   }catch(e){ logInfo('connect failed: '+e.message); }
 }
 
@@ -260,6 +284,7 @@ function disconnectConnection(conn){
   const i = connections.indexOf(conn);
   if(i>-1) connections.splice(i,1);
   rebuildConnectionList();
+  rebuildNodeList();
 }
 
 // ---------------------- Enhanced Bindable param helpers ----------------------
@@ -374,13 +399,8 @@ function applyValueToTarget(target, value){
           // Seek to position in audio file
           wrapper.offset = Math.max(0, Math.min(1, value)) * wrapper.duration;
           if (wrapper.isPlaying && wrapper.source) {
-            wrapper.source.stop();
-            wrapper.startTime = audioCtx.currentTime;
-            wrapper.source = audioCtx.createBufferSource();
-            wrapper.source.buffer = wrapper.buffer;
-            wrapper.source.connect(wrapper.playbackRate);
-            wrapper.playbackRate.connect(wrapper.gainNode);
-            wrapper.source.start(0, wrapper.offset);
+            stopInputPlayback(wrapper);
+            startInputPlayback(wrapper);
           }
         }
         return;
@@ -415,6 +435,42 @@ function applyPointToBindings(canvas, point){
   if(!canvas || !point) return;
   if(canvas.xBind) applyBindString(canvas.xBind, point.x, canvas);
   if(canvas.yBind) applyBindString(canvas.yBind, point.y, canvas);
+}
+
+// ---------------------- Input node playback helpers ----------------------
+function startInputPlayback(wrapper) {
+  if (!wrapper.buffer) return;
+  
+  if (wrapper.source) {
+    wrapper.source.stop();
+  }
+  
+  wrapper.source = audioCtx.createBufferSource();
+  wrapper.source.buffer = wrapper.buffer;
+  wrapper.source.connect(wrapper.playbackRate);
+  wrapper.playbackRate.connect(wrapper.gainNode);
+  wrapper.source.loop = wrapper.isLooping;
+  
+  wrapper.startTime = audioCtx.currentTime;
+  wrapper.source.start(0, wrapper.offset % wrapper.buffer.duration);
+  
+  wrapper.source.onended = () => {
+    if (wrapper.isLooping && wrapper.isPlaying) {
+      wrapper.offset = 0;
+      wrapper.startTime = audioCtx.currentTime;
+      startInputPlayback(wrapper);
+    } else {
+      wrapper.isPlaying = false;
+    }
+  };
+}
+
+function stopInputPlayback(wrapper) {
+  if (wrapper.source) {
+    wrapper.source.stop();
+    wrapper.source.disconnect();
+    wrapper.source = null;
+  }
 }
 
 // ---------------------- Signal system ----------------------
@@ -782,15 +838,63 @@ drawCanvas.addEventListener('pointerup', e=>{
   renderTimelineVisualization();
 });
 
+// ---------------------- Connection List ----------------------
+function rebuildConnectionList(){
+  const el = document.getElementById('connectionList'); 
+  el.innerHTML = '';
+  
+  if(connections.length === 0){
+    el.innerHTML = '<div class="mono small" style="padding:8px">No connections</div>';
+    return;
+  }
+  
+  connections.forEach((conn, index) => {
+    const div = document.createElement('div');
+    div.className = 'connection-item';
+    
+    const label = document.createElement('div');
+    label.className = 'connection-label mono small';
+    label.textContent = `${conn.source} → ${conn.target}`;
+    
+    const controls = document.createElement('div');
+    controls.className = 'connection-controls';
+    
+    const disconnectBtn = document.createElement('button');
+    disconnectBtn.textContent = '✕';
+    disconnectBtn.title = 'Disconnect';
+    disconnectBtn.style.padding = '2px 6px';
+    disconnectBtn.style.fontSize = '10px';
+    disconnectBtn.addEventListener('click', () => {
+      disconnectConnection(conn);
+    });
+    
+    controls.appendChild(disconnectBtn);
+    div.appendChild(label);
+    div.appendChild(controls);
+    el.appendChild(div);
+  });
+}
+
 // ---------------------- Enhanced UI rebuilders ----------------------
 function rebuildNodeList(){
   const el = document.getElementById('nodeList'); el.innerHTML = '';
   if(audioNodes.size===0){ el.innerHTML = '<div class="mono small" style="padding:8px">No nodes</div>'; return; }
+  
   for(const [id,info] of audioNodes){
     const div = document.createElement('div'); div.className='item'; div.style.display='flex'; div.style.flexDirection='column'; div.style.padding='6px';
     
     const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.marginBottom='6px';
     const left = document.createElement('div'); left.textContent = id+' ('+info.type+')'; left.style.flex='1';
+    
+    // Show outgoing connections
+    const outgoing = connections.filter(c => c.source === id);
+    if (outgoing.length > 0) {
+      const connText = document.createElement('div');
+      connText.className = 'mono small';
+      connText.style.color = '#888';
+      connText.textContent = `→ ${outgoing.map(c => c.target).join(', ')}`;
+      left.appendChild(connText);
+    }
     
     // Special UI for input nodes
     if (info.type === 'input' && info.wrapper) {
@@ -798,7 +902,8 @@ function rebuildNodeList(){
       const fileUI = document.createElement('div'); fileUI.className='file-input-ui';
       
       // File input button
-      const fileBtn = document.createElement('button'); fileBtn.textContent = wrapper.buffer ? 'Change File' : 'Load File';
+      const fileBtn = document.createElement('button'); 
+      fileBtn.textContent = wrapper.buffer ? (wrapper.isMicrophone ? 'Recorded' : 'Change File') : 'Load File';
       fileBtn.addEventListener('click', () => {
         const input = document.createElement('input'); input.type='file'; input.accept='audio/*';
         input.onchange = (e) => {
@@ -811,24 +916,11 @@ function rebuildNodeList(){
               wrapper.buffer = buffer;
               wrapper.duration = buffer.duration;
               wrapper.offset = 0;
+              wrapper.isMicrophone = false;
               
               // Stop current playback if playing
-              if (wrapper.source) {
-                wrapper.source.stop();
-                wrapper.source = null;
-              }
-              
-              // Create new source
-              wrapper.source = audioCtx.createBufferSource();
-              wrapper.source.buffer = buffer;
-              wrapper.source.connect(wrapper.playbackRate);
-              wrapper.playbackRate.connect(wrapper.gainNode);
-              
-              // Auto-play if was playing before
-              if (wrapper.isPlaying) {
-                wrapper.source.start(0, wrapper.offset);
-                wrapper.startTime = audioCtx.currentTime;
-              }
+              stopInputPlayback(wrapper);
+              wrapper.isPlaying = false;
               
               rebuildNodeList();
               logInfo(`Loaded: ${file.name} (${buffer.duration.toFixed(2)}s)`);
@@ -841,151 +933,202 @@ function rebuildNodeList(){
         input.click();
       });
       
-      // Mic button
+      // Mic recording button
       const micBtn = document.createElement('button'); 
-      micBtn.textContent = wrapper.isMicrophone ? 'Stop Mic' : 'Use Mic';
+      if (wrapper.isRecording) {
+        micBtn.textContent = '● Stop Recording';
+        micBtn.style.color = '#ff6b6b';
+      } else {
+        micBtn.textContent = wrapper.isMicrophone ? 'Re-record' : 'Record Mic';
+      }
+      
       micBtn.addEventListener('click', () => {
-        if (!wrapper.isMicrophone) {
+        if (wrapper.isRecording) {
+          // Stop recording
+          if (wrapper.mediaRecorder && wrapper.mediaRecorder.state !== 'inactive') {
+            wrapper.mediaRecorder.stop();
+          }
+          if (wrapper.stream) {
+            wrapper.stream.getTracks().forEach(track => track.stop());
+          }
+          wrapper.isRecording = false;
+          rebuildNodeList();
+          logInfo('Recording stopped');
+        } else {
+          // Start recording
           navigator.mediaDevices.getUserMedia({ audio: true })
             .then((stream) => {
-              wrapper.isMicrophone = true;
-              wrapper.buffer = null;
+              wrapper.stream = stream;
+              wrapper.isRecording = true;
+              wrapper.recordedChunks = [];
               
-              // Stop any existing source
-              if (wrapper.source) {
-                wrapper.source.stop();
-                wrapper.source.disconnect();
-              }
+              wrapper.mediaRecorder = new MediaRecorder(stream);
               
-              // Create media stream source
-              wrapper.source = audioCtx.createMediaStreamSource(stream);
-              wrapper.source.connect(wrapper.playbackRate);
-              wrapper.playbackRate.connect(wrapper.gainNode);
-              wrapper.isPlaying = true;
+              wrapper.mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                  wrapper.recordedChunks.push(e.data);
+                }
+              };
               
+              wrapper.mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(wrapper.recordedChunks, { type: 'audio/webm' });
+                const reader = new FileReader();
+                reader.onload = () => {
+                  audioCtx.decodeAudioData(reader.result, (buffer) => {
+                    wrapper.buffer = buffer;
+                    wrapper.duration = buffer.duration;
+                    wrapper.offset = 0;
+                    wrapper.isMicrophone = true;
+                    wrapper.isPlaying = false;
+                    
+                    rebuildNodeList();
+                    logInfo(`Recorded ${buffer.duration.toFixed(2)}s from mic`);
+                  });
+                };
+                reader.readAsArrayBuffer(audioBlob);
+              };
+              
+              wrapper.mediaRecorder.start();
               rebuildNodeList();
-              logInfo('Microphone active');
+              logInfo('Recording... Click again to stop');
             })
             .catch((err) => {
               logInfo('Microphone access denied: ' + err.message);
             });
-        } else {
-          wrapper.isMicrophone = false;
-          if (wrapper.source) {
-            wrapper.source.disconnect();
-            wrapper.source = null;
-          }
-          rebuildNodeList();
-          logInfo('Microphone stopped');
         }
       });
       
-      // Play/Pause button
+      // Play/Pause button (only if buffer exists)
       const playBtn = document.createElement('button');
-      if (wrapper.isMicrophone) {
-        playBtn.textContent = '🔴 Live';
-        playBtn.disabled = true;
-      } else {
+      if (wrapper.buffer) {
         playBtn.textContent = wrapper.isPlaying ? 'Pause' : 'Play';
         playBtn.addEventListener('click', () => {
-          if (!wrapper.buffer) {
-            logInfo('Load an audio file first');
-            return;
-          }
-          
           if (wrapper.isPlaying) {
             // Pause
-            if (wrapper.source) {
-              wrapper.source.stop();
-              wrapper.offset += audioCtx.currentTime - wrapper.startTime;
-            }
+            stopInputPlayback(wrapper);
             wrapper.isPlaying = false;
+            wrapper.offset += audioCtx.currentTime - wrapper.startTime;
           } else {
             // Play
-            wrapper.source = audioCtx.createBufferSource();
-            wrapper.source.buffer = wrapper.buffer;
-            wrapper.source.connect(wrapper.playbackRate);
-            wrapper.playbackRate.connect(wrapper.gainNode);
-            wrapper.source.start(0, wrapper.offset);
-            wrapper.startTime = audioCtx.currentTime;
             wrapper.isPlaying = true;
-            
-            // Handle end of playback
-            wrapper.source.onended = () => {
-              if (wrapper.isPlaying) {
-                wrapper.offset = 0;
-                wrapper.startTime = audioCtx.currentTime;
-                wrapper.source = audioCtx.createBufferSource();
-                wrapper.source.buffer = wrapper.buffer;
-                wrapper.source.connect(wrapper.playbackRate);
-                wrapper.playbackRate.connect(wrapper.gainNode);
-                wrapper.source.start(0, wrapper.offset);
-              }
-            };
+            startInputPlayback(wrapper);
           }
           rebuildNodeList();
         });
+      } else {
+        playBtn.textContent = 'Play';
+        playBtn.disabled = true;
       }
+      
+      // Loop toggle button
+      const loopBtn = document.createElement('button');
+      loopBtn.textContent = wrapper.isLooping ? '🔁' : '↻';
+      loopBtn.title = wrapper.isLooping ? 'Looping on' : 'Looping off';
+      loopBtn.addEventListener('click', () => {
+        wrapper.isLooping = !wrapper.isLooping;
+        if (wrapper.source) {
+          wrapper.source.loop = wrapper.isLooping;
+        }
+        rebuildNodeList();
+      });
       
       // Reset button
       const resetBtn = document.createElement('button');
       resetBtn.textContent = 'Reset';
       resetBtn.addEventListener('click', () => {
         wrapper.offset = 0;
-        if (wrapper.isPlaying && wrapper.source && !wrapper.isMicrophone) {
-          wrapper.source.stop();
-          wrapper.source = audioCtx.createBufferSource();
-          wrapper.source.buffer = wrapper.buffer;
-          wrapper.source.connect(wrapper.playbackRate);
-          wrapper.playbackRate.connect(wrapper.gainNode);
-          wrapper.source.start(0, wrapper.offset);
-          wrapper.startTime = audioCtx.currentTime;
+        if (wrapper.isPlaying && wrapper.buffer) {
+          stopInputPlayback(wrapper);
+          startInputPlayback(wrapper);
         }
         rebuildNodeList();
       });
       
       fileUI.appendChild(fileBtn);
       fileUI.appendChild(micBtn);
-      fileUI.appendChild(playBtn);
-      fileUI.appendChild(resetBtn);
+      
+      const controlRow = document.createElement('div');
+      controlRow.style.display = 'flex';
+      controlRow.style.gap = '4px';
+      controlRow.appendChild(playBtn);
+      controlRow.appendChild(loopBtn);
+      controlRow.appendChild(resetBtn);
+      fileUI.appendChild(controlRow);
       
       // Progress bar for audio file
-      if (wrapper.buffer && !wrapper.isMicrophone) {
+      if (wrapper.buffer) {
         const progressDiv = document.createElement('div'); progressDiv.className='progress-bar';
         const progressInner = document.createElement('div'); progressInner.className='progress-bar-inner';
         const progress = Math.min(1, wrapper.offset / wrapper.duration);
         progressInner.style.width = `${progress * 100}%`;
         progressDiv.appendChild(progressInner);
         fileUI.appendChild(progressDiv);
+        
+        // Recording indicator
+        if (wrapper.isRecording) {
+          const recordingIndicator = document.createElement('div');
+          recordingIndicator.className = 'recording-indicator';
+          recordingIndicator.textContent = '● RECORDING';
+          fileUI.appendChild(recordingIndicator);
+        }
       }
       
       div.appendChild(fileUI);
     }
     
-    const conn = document.createElement('select'); conn.innerHTML = '<option value="">(connect)</option><option value="dest">→ dest</option>';
-    for(const [id2] of audioNodes){ if(id2===id) continue; const opt=document.createElement('option'); opt.value=id2; opt.textContent='→ '+id2; conn.appendChild(opt); }
-    conn.addEventListener('change', ()=>{ if(conn.value) connectNode(id, conn.value); conn.value=''; });
+    // Connection dropdown (only show if not an input node or if we want to connect from input)
+    const conn = document.createElement('select'); 
+    conn.innerHTML = '<option value="">(connect)</option><option value="dest">→ dest</option>';
+    for(const [id2, info2] of audioNodes){ 
+      if(id2===id) continue; 
+      const opt=document.createElement('option'); 
+      opt.value=id2; 
+      opt.textContent='→ '+id2; 
+      conn.appendChild(opt); 
+    }
+    conn.addEventListener('change', ()=>{ 
+      if(conn.value) {
+        connectNode(id, conn.value);
+      }
+      conn.value=''; 
+    });
     
-    const del = document.createElement('button'); del.textContent='del'; del.addEventListener('click', ()=>{
+    const del = document.createElement('button'); 
+    del.textContent='del'; 
+    del.addEventListener('click', ()=>{
       // Clean up input node resources
       if (info.type === 'input' && info.wrapper) {
         if (info.wrapper.source) {
           info.wrapper.source.stop();
           info.wrapper.source.disconnect();
         }
+        if (info.wrapper.stream) {
+          info.wrapper.stream.getTracks().forEach(track => track.stop());
+        }
+        if (info.wrapper.mediaRecorder && info.wrapper.mediaRecorder.state !== 'inactive') {
+          info.wrapper.mediaRecorder.stop();
+        }
       }
+      
+      // Remove all connections involving this node
+      const connectionsToRemove = connections.filter(c => c.source === id || c.target === id);
+      connectionsToRemove.forEach(c => disconnectConnection(c));
+      
       audioNodes.delete(id); 
       rebuildNodeList(); 
-      rebuildAllBindings(); 
+      rebuildAllBindings();
+      rebuildConnectionList();
     });
     
-    row.appendChild(left); row.appendChild(conn); row.appendChild(del); 
+    row.appendChild(left); 
+    if (info.type !== 'input' || (info.wrapper && info.wrapper.buffer)) {
+      row.appendChild(conn); 
+    }
+    row.appendChild(del); 
     div.appendChild(row);
     el.appendChild(div);
   }
 }
-
-function rebuildConnectionList(){ /* connections summarized in node list */ }
 
 function rebuildSigList(){
   const el = document.getElementById('sigList'); el.innerHTML = '';
@@ -1149,7 +1292,7 @@ window.addEventListener('pointerdown', ()=>{ if(audioCtx.state==='suspended') au
 // ---------------------- Enhanced Export/Import ----------------------
 document.getElementById('exportBtn').addEventListener('click', ()=>{
   const data = {
-    version: 3, // bumped version for new features
+    version: 4, // bumped version for new features
     canvases: canvases.map(c=>({id:c.id,color:c.color,duration:c.duration,frames:Array.from(c.frames.entries()),xBind:c.xBind,yBind:c.yBind,speed:c.speed,isLooping:c.isLooping,isMuted:c.isMuted,currentTime:c.currentTime})),
     signals: Array.from(signalGens.values()).map(s=>({id:s.id,type:s.type,params:s.params,bindings:s.bindings})),
     nodes: Array.from(audioNodes.entries()).map(([id,info])=>({id,type:info.type})),
@@ -1190,7 +1333,13 @@ importFile.addEventListener('change', (e)=>{
         data.nodes.forEach(n=>{ try{ makeAudioNode(n.type); }catch(e){} });
       }
       
-      rebuildNodeList(); rebuildSigList(); rebuildCanvasList(); rebuildAllBindings(); updateActiveCanvasUI(); updateTimelineSize(); renderAll(); renderTimelineVisualization(); logInfo('Imported project');
+      if(data.connections){
+        data.connections.forEach(conn=>{
+          connections.push(conn);
+        });
+      }
+      
+      rebuildNodeList(); rebuildSigList(); rebuildCanvasList(); rebuildConnectionList(); rebuildAllBindings(); updateActiveCanvasUI(); updateTimelineSize(); renderAll(); renderTimelineVisualization(); logInfo('Imported project');
     }catch(err){
       logInfo('Import failed: '+err.message);
     }
@@ -1217,6 +1366,7 @@ rebuildCanvasList();
 rebuildAllBindings();
 rebuildNodeList();
 rebuildSigList();
+rebuildConnectionList();
 updateActiveCanvasUI();
 
 // set a couple nodes for convenience
