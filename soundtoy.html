@@ -1,0 +1,954 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Stylus Synth DAW — Unified Timeline (Fixed)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html,body{height:100%;margin:0;background:#0f0f0f;color:#eee;font-family:monospace}
+  .row{display:flex;height:100%}
+  #sidebar{width:340px;background:#111;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+  #main{flex:1;display:flex;flex-direction:column;min-width:0}
+  #canvasWrap{flex:1;padding:12px;box-sizing:border-box;min-height:0} /* allow flex children to shrink */
+  #draw{width:100%;height:100%;display:block}
+  #footer{height:320px;background:#0b0b0b;border-top:1px solid #222;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px}
+  button{background:#1a1a1a;border:1px solid #333;color:#ddd;padding:6px 8px;cursor:pointer}
+  button:disabled{opacity:0.5;cursor:not-allowed}
+  .mono{font-family:monospace;font-size:12px;color:#ddd}
+  .small{font-size:11px;color:#aaa}
+  .section{padding:6px;border:1px solid #222;background:#0b0b0b}
+  label{font-size:12px;display:block;margin-bottom:4px}
+  select,input[type=color]{width:100%;box-sizing:border-box}
+  .list{max-height:150px;overflow:auto;margin-top:6px}
+  .item{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .item button{padding:2px 6px}
+  /* Unified timeline */
+  #timelineContainer{flex:1;overflow:auto;border:1px solid #222;position:relative;background:#050505;min-height:160px}
+  #timelineCanvas{height:160px;display:block;background:#050505}
+  .global-controls{display:flex;gap:8px;align-items:center;margin-top:4px}
+  .timeline-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+  .timeline-controls input[type=number]{width:80px;background:#1a1a1a;border:1px solid #333;color:#ddd;padding:2px 4px}
+  .live-indicator{color:#ff6b6b;font-size:10px;animation:pulse 1s infinite}
+  @keyframes pulse{0%{opacity:1}50%{opacity:0.5}100%{opacity:1}}
+</style>
+</head>
+<body>
+<div class="row">
+  <div id="sidebar">
+    <div class="section">
+      <div class="mono">AUDIO NODES</div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <button data-mk="osc">Osc</button>
+        <button data-mk="gain">Gain</button>
+        <button data-mk="filter">Filter</button>
+        <button data-mk="delay">Delay</button>
+        <button data-mk="pan">Pan</button>
+        <button data-mk="compressor">Comp</button>
+      </div>
+      <div class="list" id="nodeList"></div>
+    </div>
+
+    <div class="section">
+      <div class="mono">SIGNAL GENERATORS</div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <button data-sig="sine">Sine</button>
+        <button data-sig="saw">Saw</button>
+        <button data-sig="tri">Tri</button>
+        <button data-sig="square">Square</button>
+        <button data-sig="noise">Noise</button>
+      </div>
+      <div class="list" id="sigList"></div>
+    </div>
+
+    <div class="section">
+      <div class="mono">CANVASES <span id="liveIndicator" class="live-indicator" style="display:none">● LIVE</span></div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button id="newCanvas">+ New</button>
+        <button id="delCanvas">Del</button>
+        <button id="clearCanvas">Clear</button>
+      </div>
+      <label style="margin-top:8px">Color <input id="canvasColor" type="color" value="#9ad1ff"/></label>
+      <div class="list" id="canvasList"></div>
+      <label>X axis: <select id="xBind"></select></label>
+      <label>Y axis: <select id="yBind"></select></label>
+    </div>
+
+    <div class="section">
+      <div class="mono">INFO</div>
+      <div id="infoBox" class="mono small">idle</div>
+    </div>
+
+    <div class="section">
+      <div class="mono">EXPORT / IMPORT</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button id="exportBtn">Export</button>
+        <button id="importBtn">Import</button>
+        <input type="file" id="importFile" accept=".json" style="display:none"/>
+      </div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="canvasWrap"><canvas id="draw"></canvas></div>
+
+    <div id="footer">
+      <div class="timeline-controls">
+        <label class="mono small">Canvas <span id="activeCanvasName" style="color:#9ad1ff">—</span></label>
+        <label class="mono small">Len <input id="canvasDuration" type="number" value="10000" min="100">ms</label>
+        <label><input id="canvasLoop" type="checkbox" checked> Loop</label>
+        <label><input id="canvasMute" type="checkbox"> Mute</label>
+        <label class="mono small">Speed <input id="canvasSpeed" type="number" value="1" step="0.01" min="0.01"></label>
+        <span class="mono small">Time <span id="canvasTime">0.000s</span></span>
+        <input id="canvasTimeSlider" type="range" min="0" max="10000" value="0" style="width:160px"/>
+        <div style="flex:1"></div>
+        <div class="mono small">Zoom: <input id="zoomRange" type="range" min="0.02" max="0.25" step="0.01" value="0.05" style="width:120px"></div>
+      </div>
+
+      <div id="timelineContainer"><canvas id="timelineCanvas" height="160"></canvas></div>
+
+      <div class="global-controls">
+        <button id="playAll">▶</button>
+        <button id="pauseAll">▐▐</button>
+        <button id="stopAll">■</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Fixed single-file DAW — unified timeline
+   Key fixes:
+   - All resizing of canvases (draw + timeline) is done only in resize() and updateTimelineSize()
+   - No layout reads/writes inside rendering/tick loop
+   - timelineCanvas internal buffer resized only when zoom/durations/resize changes
+*/
+
+/* Fixed single-file DAW — unified timeline with enhanced signal generator binding */
+
+const TIMESTEP = 16;
+
+const drawCanvas = document.getElementById('draw');
+const drawCtx = drawCanvas.getContext('2d');
+const timelineCanvas = document.getElementById('timelineCanvas');
+const timelineContainer = document.getElementById('timelineContainer');
+const infoBox = document.getElementById('infoBox');
+const liveIndicator = document.getElementById('liveIndicator');
+
+let ratio = window.devicePixelRatio || 1;
+
+// State
+let canvases = [];
+let canvasCounter = 0;
+let activeCanvasId = null;
+let drawing = false;
+let stroke = [];
+let strokeStartTime = 0;
+let gestureOffsetMs = 0;
+
+// Audio graph containers
+const audioNodes = new Map();
+let nodeCounter = 1;
+const connections = [];
+
+// Signals
+const signalGens = new Map();
+
+function logInfo(s){ infoBox.textContent = s; }
+
+// ---------------------- Utilities ----------------------
+function uid(prefix='id'){ return prefix + Math.random().toString(16).slice(2,9); }
+function getCanvasById(id){ return canvases.find(c=>c.id===id); }
+
+// ---------------------- Audio node helpers ----------------------
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContextClass();
+
+function makeAudioNode(type){
+  let node = null;
+  try{
+    switch(type){
+      case 'osc': node = audioCtx.createOscillator(); node.type='sine'; node.start(); break;
+      case 'gain': node = audioCtx.createGain(); break;
+      case 'filter': node = audioCtx.createBiquadFilter(); break;
+      case 'delay': node = audioCtx.createDelay(); break;
+      case 'pan': node = audioCtx.createStereoPanner(); break;
+      case 'compressor': node = audioCtx.createDynamicsCompressor(); break;
+    }
+  }catch(e){
+    logInfo('audio node creation failed: '+e.message); return null;
+  }
+  if(!node) return null;
+  const id = 'N'+(nodeCounter++);
+  audioNodes.set(id, {node, type});
+  rebuildNodeList();
+  rebuildAllBindings();
+  return id;
+}
+
+function connectNode(srcId, destId){
+  const src = audioNodes.get(srcId)?.node;
+  const target = destId === 'dest' ? audioCtx.destination : audioNodes.get(destId)?.node;
+  if(!src || !target) return;
+  try{
+    src.connect(target);
+    connections.push({source:srcId, target:destId});
+    rebuildConnectionList();
+    logInfo(srcId+' → '+destId);
+  }catch(e){ logInfo('connect failed: '+e.message); }
+}
+
+function disconnectConnection(conn){
+  try{
+    const src = audioNodes.get(conn.source)?.node;
+    const tgt = conn.target==='dest' ? audioCtx.destination : audioNodes.get(conn.target)?.node;
+    if(src && tgt) src.disconnect(tgt);
+  }catch(e){}
+  const i = connections.indexOf(conn);
+  if(i>-1) connections.splice(i,1);
+  rebuildConnectionList();
+}
+
+// ---------------------- Enhanced Bindable param helpers ----------------------
+function getNumericParams(nodeObj){
+  const out = [];
+  const candidates = ['frequency','detune','gain','Q','delayTime','pan','threshold','knee','ratio','attack','release','offset'];
+  for(const k of candidates){
+    if(k in nodeObj){
+      const v = nodeObj[k];
+      const isAudioParam = (typeof v === 'object' && v !== null && 'value' in v);
+      if(isAudioParam || typeof v === 'number') out.push({key:k,label:k,isAudioParam});
+    }
+  }
+  return out;
+}
+
+function getSignalGenParams(sig){
+  return [
+    {key: 'freq', label: 'freq'},
+    {key: 'amp', label: 'amp'},
+    {key: 'bias', label: 'bias'}
+  ];
+}
+
+function convertPointToParam(norm, pname){
+  if(pname.match(/frequency|delayTime|offset/)) return 20 + norm * (2000 - 20);
+  if(pname.match(/gain|pan|ratio|Q/)){
+    if(pname==='pan') return -1 + norm*2;
+    if(pname==='gain') return norm;
+    if(pname==='ratio') return 1 + norm*19;
+    if(pname==='Q') return 0.1 + norm*30;
+    return norm;
+  }
+  if(pname.match(/detune|threshold|knee|attack|release/)){
+    if(pname==='detune') return -1200 + norm*2400;
+    if(pname==='threshold') return -100 + norm*100;
+    if(pname==='knee') return norm*40;
+    if(pname==='attack' || pname==='release') return norm;
+    return norm;
+  }
+  // Signal generator parameters
+  if(pname === 'freq') return 0.1 + norm * 20; // 0.1Hz to 20.1Hz
+  if(pname === 'amp') return norm * 5; // 0 to 5
+  if(pname === 'bias') return -2 + norm * 4; // -2 to +2
+  return norm;
+}
+
+function applyValueToTarget(target, value){
+  if(!target) return;
+  
+  // Parse target format: type:id:param
+  const parts = target.split(':');
+  if(parts.length < 2) return;
+  
+  const type = parts[0];
+  const id = parts[1];
+  const param = parts[2];
+  
+  switch(type){
+    case 'canvas':
+      // canvas:C0:speed or canvas:C0:duration
+      const c = getCanvasById(id);
+      if(!c) return;
+      if(param === 'speed') c.speed = Math.max(0.001, Number(value) || 0.001);
+      if(param === 'duration'){
+        const dur = Math.max(100, Math.round(Number(value) || c.duration));
+        c.duration = dur;
+        if(c.currentTime > c.duration) c.currentTime = c.duration;
+        updateTimelineSize();
+      }
+      break;
+      
+    case 'node':
+      // node:N1:gain
+      const nodeEntry = audioNodes.get(id);
+      if(!nodeEntry) return;
+      const node = nodeEntry.node;
+      const prop = node[param];
+      if(prop && typeof prop.setValueAtTime === 'function'){
+        try{ prop.setValueAtTime(value, audioCtx.currentTime); }catch(e){}
+      } else if(prop !== undefined && typeof prop === 'number'){
+        try{ node[param] = value; }catch(e){}
+      } else {
+        try{ node[param] = value; }catch(e){}
+      }
+      break;
+      
+    case 'sig':
+      // sig:S0:freq or sig:S0:amp or sig:S0:bias
+      const sig = signalGens.get(id);
+      if(!sig || !param) return;
+      if(param in sig.params){
+        sig.params[param] = value;
+      }
+      break;
+  }
+}
+
+function applyBindString(bindStr, norm, canvas){
+  if(!bindStr) return;
+  const val = convertPointToParam(norm, bindStr.split(':').pop());
+  applyValueToTarget(bindStr, val);
+}
+
+function applyPointToBindings(canvas, point){
+  if(!canvas || !point) return;
+  if(canvas.xBind) applyBindString(canvas.xBind, point.x, canvas);
+  if(canvas.yBind) applyBindString(canvas.yBind, point.y, canvas);
+}
+
+// ---------------------- Signal system ----------------------
+function evalSignal(sig, t){
+  const p = sig.params || {freq:1, amp:1, bias:0};
+  const f = p.freq || 1, a = p.amp || 1, b = p.bias || 0;
+  switch(sig.type){
+    case 'sine': return b + a * Math.sin(2*Math.PI * f * t);
+    case 'saw': return b + a * ( ((t*f)%1)*2 - 1 );
+    case 'tri': {
+      const ph = (t*f)%1;
+      return b + a * (ph < 0.5 ? (4*ph -1) : (3 - 4*ph));
+    }
+    case 'square': return b + ( ((t*f)%1) < 0.5 ? a : -a );
+    case 'noise': return b + a * (Math.random()*2 - 1);
+  }
+  return 0;
+}
+
+function evaluateSignals(globalSeconds){
+  for(const [id, sig] of signalGens){
+    const raw = evalSignal(sig, globalSeconds);
+    const norm = (raw + 1) * 0.5; // -1..1 -> 0..1
+    
+    for(const t of sig.bindings || []){
+      if(!t) continue;
+      
+      const parts = t.split(':');
+      if(parts.length < 2) continue;
+      
+      const type = parts[0];
+      const targetId = parts[1];
+      const param = parts[2];
+      
+      let mappedValue;
+      
+      if(type === 'canvas'){
+        // Special mapping for canvas properties
+        if(param === 'speed') mappedValue = 0.1 + norm * 3.9;
+        else if(param === 'duration') mappedValue = 100 + Math.round(norm * 60000);
+        else mappedValue = norm;
+      } else if(type === 'node'){
+        // Node parameters use convertPointToParam
+        mappedValue = convertPointToParam(norm, param);
+      } else if(type === 'sig'){
+        // Signal generator parameters use direct mapping based on param type
+        if(param === 'freq') mappedValue = 0.1 + norm * 20;
+        else if(param === 'amp') mappedValue = norm * 5;
+        else if(param === 'bias') mappedValue = -2 + norm * 4;
+        else mappedValue = norm;
+      }
+      
+      if(mappedValue !== undefined){
+        applyValueToTarget(t, mappedValue);
+      }
+    }
+  }
+}
+
+// ---------------------- Canvas model ----------------------
+function createCanvasModel(){
+  return {
+    id: 'C' + (canvasCounter++),
+    color: document.getElementById('canvasColor').value,
+    frames: new Map(),
+    xBind: '',
+    yBind: '',
+    duration: 10000,
+    currentTime: 0,
+    isPlaying: false,
+    isLooping: true,
+    isMuted: false,
+    lastUpdate: performance.now(),
+    speed: 1,
+    lastAppliedFrame: -1
+  };
+}
+
+function newCanvas(){
+  const c = createCanvasModel();
+  canvases.push(c);
+  activeCanvasId = c.id;
+  rebuildCanvasList();
+  rebuildAllBindings();
+  updateActiveCanvasUI();
+  updateTimelineSize();
+}
+
+function getCanvas(id){ return canvases.find(c=>c.id===id); }
+function deleteCanvas(id){
+  canvases = canvases.filter(c=>c.id!==id);
+  if(activeCanvasId===id) activeCanvasId = canvases.length?canvases[0].id:null;
+  rebuildCanvasList(); rebuildAllBindings(); updateActiveCanvasUI(); updateTimelineSize();
+}
+function clearCanvas(id){
+  const c = getCanvas(id);
+  if(c){ c.frames.clear(); c.lastAppliedFrame=-1; renderAll(); renderTimelineVisualization(); logInfo('cleared '+id); }
+}
+function playCanvas(id){
+  const c = getCanvas(id); if(!c || c.isPlaying) return;
+  c.isPlaying = true; c.lastUpdate = performance.now(); if(c.currentTime >= c.duration) c.currentTime = 0; c.lastAppliedFrame = -1;
+}
+function pauseCanvas(id){
+  const c = getCanvas(id); if(!c || !c.isPlaying) return;
+  c.isPlaying = false; const now = performance.now(); c.currentTime += (now - c.lastUpdate) * c.speed; c.lastUpdate = now;
+}
+function stopCanvas(id){
+  const c = getCanvas(id); if(!c) return;
+  c.isPlaying = false; c.currentTime = 0; c.lastUpdate = performance.now(); c.lastAppliedFrame = -1;
+}
+
+// ---------------------- Commit stroke into frames ----------------------
+function commitStrokeToCanvas(canvas, stroke, offsetMs){
+  if(!stroke || stroke.length < 1) return;
+  const frames = canvas.frames;
+  const startLocal = Math.round(stroke[0].t);
+  const endLocal = Math.round(stroke[stroke.length-1].t);
+  const startG = offsetMs + startLocal;
+  const endG = offsetMs + endLocal;
+  const startF = Math.floor(startG / TIMESTEP);
+  const endF = Math.floor(endG / TIMESTEP);
+  for(let gf = startF; gf <= endF; gf++){
+    const gms = gf * TIMESTEP;
+    const rel = gms - startG;
+    let a = 0;
+    while(a + 1 < stroke.length && stroke[a+1].t < rel) a++;
+    const A = stroke[a];
+    const B = stroke[Math.min(a+1, stroke.length-1)];
+    const span = (B.t - A.t) || 1;
+    const k = Math.max(0, Math.min(1, (rel - A.t) / span));
+    const x = A.x + (B.x - A.x) * k;
+    const y = A.y + (B.y - A.y) * k;
+    frames.set(gf, {x,y});
+  }
+  logInfo(`committed ${canvas.id} [${startF}..${endF}] frames`);
+  updateTimelineSize();
+}
+
+// ---------------------- Enhanced rendering ----------------------
+function renderAll(){
+  const ctx = drawCtx;
+  if(!ctx) return;
+  ctx.save();
+  ctx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  ctx.scale(ratio, ratio);
+  const w = drawCanvas.width / ratio, h = drawCanvas.height / ratio;
+  
+  // background
+  ctx.fillStyle = '#101010'; ctx.fillRect(0,0,w,h);
+  
+  // grid
+  const step = 40;
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+  for(let x=0;x<w;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for(let y=0;y<h;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  
+  // draw frames for canvases up to their currentTime
+  for(const c of canvases){
+    const currentFrame = Math.floor(c.currentTime / TIMESTEP);
+    for(const [frameIdx, point] of c.frames){
+      if(frameIdx <= currentFrame){
+        ctx.fillStyle = c.color;
+        const px = point.x * w, py = point.y * h;
+        const radius = c.id === activeCanvasId ? 3.5 : 2.5;
+        ctx.fillRect(px - radius, py - radius, radius*2, radius*2);
+      }
+    }
+  }
+  
+  // draw active stroke
+  if(stroke.length > 0){
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.beginPath();
+    for(let i=0;i<stroke.length;i++){
+      const p = stroke[i]; const px = p.x * w, py = p.y * h;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+    const last = stroke[stroke.length-1];
+    ctx.fillStyle = '#ff6b6b'; ctx.beginPath(); ctx.arc(last.x*w,last.y*h,8,0,Math.PI*2); ctx.fill();
+  }
+  
+  // playhead markers
+  for(const c of canvases){
+    const curFrame = Math.floor(c.currentTime / TIMESTEP);
+    const point = c.frames.get(curFrame);
+    if(point){
+      ctx.fillStyle = c.color;
+      const px = point.x * w, py = point.y * h;
+      ctx.beginPath(); ctx.arc(px,py,6,0,Math.PI*2); ctx.fill();
+    }
+  }
+  
+  // text info
+  ctx.fillStyle = '#ddd'; ctx.font = '12px monospace';
+  ctx.fillText(`Active: ${activeCanvasId || '—'}`, 8, 14);
+  if(activeCanvasId){
+    const c = getCanvas(activeCanvasId);
+    if(c) ctx.fillText(`Time: ${(c.currentTime/1000).toFixed(3)}s`, 8, 28);
+  }
+  ctx.restore();
+}
+
+// ---------------------- Timeline visualization ----------------------
+let timelinePixelsPerMs = Number(document.getElementById('zoomRange').value);
+let timelineCssWidth = 800;
+
+function updateTimelineSize(){
+  const maxDur = canvases.reduce((m,c)=>Math.max(m, c.duration), 1000);
+  timelinePixelsPerMs = Number(document.getElementById('zoomRange').value);
+  const desiredWidth = Math.max(timelineContainer.clientWidth, Math.ceil(80 + maxDur * timelinePixelsPerMs));
+  timelineCssWidth = desiredWidth;
+  timelineCanvas.style.width = desiredWidth + 'px';
+  timelineCanvas.width = Math.floor(desiredWidth * ratio);
+  timelineCanvas.height = Math.floor(160 * ratio);
+  renderTimelineVisualization();
+}
+
+function renderTimelineVisualization(){
+  const cvs = timelineCanvas;
+  const ctx = cvs.getContext('2d');
+  const w = cvs.width / ratio;
+  const h = cvs.height / ratio;
+  ctx.save();
+  ctx.scale(ratio, ratio);
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#050505'; ctx.fillRect(0,0,w,h);
+  if(canvases.length===0){
+    ctx.fillStyle = '#999'; ctx.fillText('No canvases', 10, 20); ctx.restore(); return;
+  }
+  const laneH = h / canvases.length;
+  for(let i=0;i<canvases.length;i++){
+    const c = canvases[i];
+    const y0 = Math.round(i * laneH);
+    // lane background
+    ctx.fillStyle = '#080808'; ctx.fillRect(0, y0, w, laneH);
+    // left header
+    ctx.fillStyle = '#0b0b0b'; ctx.fillRect(0, y0, 80, laneH);
+    ctx.fillStyle = c.color; ctx.font = '11px monospace'; ctx.fillText(`${c.id} ${c.isMuted?'🔇':''}`, 6, y0 + 14);
+    // grid seconds
+    ctx.strokeStyle = '#121212'; ctx.lineWidth = 1;
+    const seconds = Math.ceil(c.duration / 1000);
+    for(let s=0;s<=seconds;s++){
+      const x = 80 + s * 1000 * timelinePixelsPerMs;
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + laneH); ctx.stroke();
+    }
+    // frames
+    ctx.fillStyle = c.color;
+    for(const [frameIdx, p] of c.frames){
+      const tms = frameIdx * TIMESTEP;
+      if(tms > c.duration) continue;
+      const x = 80 + tms * timelinePixelsPerMs;
+      const y = y0 + (1 - p.y) * (laneH - 6) + 3;
+      ctx.fillRect(x-1, Math.round(y)-1, 2, 2);
+    }
+    // playhead
+    const playX = 80 + c.currentTime * timelinePixelsPerMs;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(playX, y0); ctx.lineTo(playX, y0 + laneH); ctx.stroke();
+    // loop indicator
+    if(c.isLooping){
+      ctx.fillStyle = 'rgba(255,107,107,0.08)'; ctx.fillRect(80, y0 + laneH - 6, Math.max(0.1, c.duration * timelinePixelsPerMs), 6);
+    }
+  }
+  ctx.restore();
+}
+
+// ---------------------- Resize handling ----------------------
+function resizeAll(){
+  ratio = window.devicePixelRatio || 1;
+  const rect = drawCanvas.getBoundingClientRect();
+  drawCanvas.width = Math.floor(rect.width * ratio);
+  drawCanvas.height = Math.floor(rect.height * ratio);
+  updateTimelineSize();
+  renderAll();
+  renderTimelineVisualization();
+}
+
+window.addEventListener('resize', resizeAll);
+document.getElementById('zoomRange').addEventListener('input', ()=>{ updateTimelineSize(); renderTimelineVisualization(); });
+
+// ---------------------- Tick loop ----------------------
+let lastRAF = 0;
+function tick(ts){
+  if(!lastRAF) lastRAF = ts;
+  const now = performance.now();
+  const globalSeconds = now / 1000;
+  
+  // update canvases
+  for(const c of canvases){
+    if(c.isPlaying){
+      const dt = now - c.lastUpdate;
+      c.lastUpdate = now;
+      c.currentTime += dt * c.speed;
+      if(c.isLooping) c.currentTime = c.currentTime % c.duration;
+      else if(c.currentTime > c.duration){ c.currentTime = c.duration; c.isPlaying = false; }
+      const frameIdx = Math.floor(c.currentTime / TIMESTEP);
+      if(frameIdx !== c.lastAppliedFrame){
+        c.lastAppliedFrame = frameIdx;
+        const p = c.frames.get(frameIdx);
+        if(p && !c.isMuted) applyPointToBindings(c, p);
+      }
+    }
+  }
+
+  evaluateSignals(globalSeconds);
+
+  // update active canvas UI
+  if(activeCanvasId){
+    const a = getCanvas(activeCanvasId);
+    if(a){
+      document.getElementById('canvasTime').textContent = (a.currentTime/1000).toFixed(3)+'s';
+      const slider = document.getElementById('canvasTimeSlider');
+      slider.max = a.duration; slider.value = a.currentTime;
+    }
+  }
+
+  renderAll();
+  renderTimelineVisualization();
+
+  lastRAF = ts;
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// ---------------------- Pointer drawing ----------------------
+function toLocalPoint(ev){
+  const r = drawCanvas.getBoundingClientRect();
+  return { x: (ev.clientX - r.left) / r.width, y: (ev.clientY - r.top) / r.height };
+}
+
+drawCanvas.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  if(!activeCanvasId) return;
+  try{ drawCanvas.setPointerCapture(e.pointerId); } catch(e){}
+  drawing = true;
+  stroke = [];
+  gestureOffsetMs = getCanvasById(activeCanvasId).currentTime;
+  strokeStartTime = performance.now();
+  const p = toLocalPoint(e);
+  const pt = {t:0, x:p.x, y:p.y};
+  stroke.push(pt);
+  applyPointToBindings(getCanvasById(activeCanvasId), pt);
+  liveIndicator.style.display = 'inline';
+  renderAll();
+});
+
+drawCanvas.addEventListener('pointermove', e=>{
+  if(!drawing) return;
+  const p = toLocalPoint(e);
+  const pt = { t: performance.now() - strokeStartTime, x: p.x, y: p.y };
+  stroke.push(pt);
+  applyPointToBindings(getCanvasById(activeCanvasId), pt);
+  renderAll();
+});
+
+drawCanvas.addEventListener('pointerup', e=>{
+  if(!drawing) return;
+  drawing = false;
+  try{ drawCanvas.releasePointerCapture(e.pointerId); }catch(e){}
+  const c = getCanvasById(activeCanvasId);
+  if(c && stroke.length > 0) commitStrokeToCanvas(c, stroke, gestureOffsetMs);
+  stroke = [];
+  liveIndicator.style.display = 'none';
+  renderAll();
+  renderTimelineVisualization();
+});
+
+// ---------------------- Enhanced UI rebuilders ----------------------
+function rebuildNodeList(){
+  const el = document.getElementById('nodeList'); el.innerHTML = '';
+  if(audioNodes.size===0){ el.innerHTML = '<div class="mono small" style="padding:8px">No nodes</div>'; return; }
+  for(const [id,info] of audioNodes){
+    const div = document.createElement('div'); div.className='item'; div.style.display='flex'; div.style.justifyContent='space-between'; div.style.padding='6px';
+    const left = document.createElement('div'); left.textContent = id+' ('+info.type+')'; left.style.flex='1';
+    const conn = document.createElement('select'); conn.innerHTML = '<option value="">(connect)</option><option value="dest">→ dest</option>';
+    for(const [id2] of audioNodes){ if(id2===id) continue; const opt=document.createElement('option'); opt.value=id2; opt.textContent='→ '+id2; conn.appendChild(opt); }
+    conn.addEventListener('change', ()=>{ if(conn.value) connectNode(id, conn.value); conn.value=''; });
+    const del = document.createElement('button'); del.textContent='del'; del.addEventListener('click', ()=>{ audioNodes.delete(id); rebuildNodeList(); rebuildAllBindings(); });
+    div.appendChild(left); div.appendChild(conn); div.appendChild(del); el.appendChild(div);
+  }
+}
+
+function rebuildConnectionList(){ /* connections summarized in node list */ }
+
+function rebuildSigList(){
+  const el = document.getElementById('sigList'); el.innerHTML = '';
+  if(signalGens.size===0){ el.innerHTML = '<div class="mono small" style="padding:8px">No signals</div>'; return; }
+  for(const [id,sig] of signalGens){
+    const box = document.createElement('div'); box.className='item'; box.style.flexDirection='column'; box.style.alignItems='stretch'; box.style.padding='6px';
+    const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between';
+    const label = document.createElement('div'); label.textContent=id+' ('+sig.type+')'; const del = document.createElement('button'); del.textContent='del';
+    del.addEventListener('click', ()=>{ signalGens.delete(id); rebuildSigList(); rebuildAllBindings(); });
+    row.appendChild(label); row.appendChild(del); box.appendChild(row);
+    
+    const params = document.createElement('div'); params.style.display='flex'; params.style.gap='6px'; params.style.marginTop='6px';
+    const freq = document.createElement('input'); freq.type='number'; freq.step='0.01'; freq.value = sig.params.freq; freq.style.width='64px'; freq.addEventListener('change',(e)=>sig.params.freq=Number(e.target.value));
+    const amp = document.createElement('input'); amp.type='number'; amp.step='0.01'; amp.value = sig.params.amp; amp.style.width='64px'; amp.addEventListener('change',(e)=>sig.params.amp=Number(e.target.value));
+    const bias = document.createElement('input'); bias.type='number'; bias.step='0.01'; bias.value = sig.params.bias; bias.style.width='64px'; bias.addEventListener('change',(e)=>sig.params.bias=Number(e.target.value));
+    params.appendChild(document.createTextNode('f')); params.appendChild(freq); params.appendChild(document.createTextNode('A')); params.appendChild(amp); params.appendChild(document.createTextNode('b')); params.appendChild(bias);
+    box.appendChild(params);
+    
+    // bindings UI
+    const bindings = document.createElement('div'); bindings.style.marginTop='6px';
+    (sig.bindings||[]).forEach((tgt,i)=>{
+      const r = document.createElement('div'); r.style.display='flex'; r.style.justifyContent='space-between';
+      const tdiv = document.createElement('div'); tdiv.textContent = tgt; const rem = document.createElement('button'); rem.textContent='✕'; rem.addEventListener('click',()=>{ sig.bindings.splice(i,1); rebuildSigList(); });
+      r.appendChild(tdiv); r.appendChild(rem); bindings.appendChild(r);
+    });
+    
+    // add-binding row
+    const addRow = document.createElement('div'); addRow.style.display='flex'; addRow.style.gap='6px'; addRow.style.marginTop='6px';
+    const sel = document.createElement('select'); sel.style.flex='1'; sel.innerHTML = '<option value="">(bind target)</option>';
+    
+    // Audio node parameters
+    for(const [nid,info] of audioNodes){ 
+      const params = getNumericParams(info.node); 
+      for(const p of params){ 
+        const opt=document.createElement('option'); 
+        opt.value = `node:${nid}:${p.key}`; 
+        opt.textContent = `node:${nid}:${p.key}`; 
+        sel.appendChild(opt); 
+      } 
+    }
+    
+    // Canvas parameters
+    for(const c of canvases){ 
+      const o1=document.createElement('option'); o1.value=`canvas:${c.id}:speed`; o1.textContent=`canvas:${c.id}:speed`; sel.appendChild(o1); 
+      const o2=document.createElement('option'); o2.value=`canvas:${c.id}:duration`; o2.textContent=`canvas:${c.id}:duration`; sel.appendChild(o2);
+    }
+    
+    // Other signal generator parameters (exclude self)
+    for(const [oid, osig] of signalGens){
+      if(oid === id) continue;
+      const params = getSignalGenParams(osig);
+      for(const p of params){
+        const opt = document.createElement('option');
+        opt.value = `sig:${oid}:${p.key}`;
+        opt.textContent = `sig:${oid}:${p.key}`;
+        sel.appendChild(opt);
+      }
+    }
+    
+    const addBtn = document.createElement('button'); addBtn.textContent='add'; addBtn.addEventListener('click', ()=>{ if(!sel.value) return; sig.bindings = sig.bindings||[]; sig.bindings.push(sel.value); rebuildSigList(); });
+    addRow.appendChild(sel); addRow.appendChild(addBtn);
+    box.appendChild(bindings); box.appendChild(addRow);
+    el.appendChild(box);
+  }
+}
+
+function rebuildCanvasList(){
+  const el = document.getElementById('canvasList'); el.innerHTML = '';
+  if(canvases.length===0){ el.innerHTML = '<div class="mono small" style="padding:8px">No canvases</div>'; return; }
+  canvases.forEach((c)=>{
+    const out = document.createElement('div'); out.style.padding='6px'; out.style.borderBottom='1px solid #141414';
+    const row = document.createElement('div'); row.style.display='flex'; row.style.gap='6px';
+    const b = document.createElement('button'); b.textContent = c.id; b.style.flex='1'; b.style.background = (c.id===activeCanvasId)?'#333':'#1a1a1a';
+    b.addEventListener('click', ()=>{ activeCanvasId = c.id; rebuildCanvasList(); rebuildAllBindings(); updateActiveCanvasUI(); });
+    const col = document.createElement('input'); col.type='color'; col.value = c.color; col.addEventListener('input',(e)=>{ c.color = e.target.value; renderAll(); renderTimelineVisualization(); });
+    row.appendChild(b); row.appendChild(col); out.appendChild(row);
+    
+    const ctrl = document.createElement('div'); ctrl.style.display='flex'; ctrl.style.gap='6px'; ctrl.style.marginTop='6px';
+    const play = document.createElement('button'); play.textContent = c.isPlaying ? '▐▐':'▶'; play.addEventListener('click',(e)=>{ e.stopPropagation(); if(c.isPlaying) pauseCanvas(c.id); else { playCanvas(c.id); } rebuildCanvasList(); });
+    const stop = document.createElement('button'); stop.textContent='■'; stop.addEventListener('click',(e)=>{ e.stopPropagation(); stopCanvas(c.id); rebuildCanvasList(); });
+    const loop = document.createElement('button'); loop.textContent = c.isLooping ? '↻':'↺'; loop.addEventListener('click',(e)=>{ e.stopPropagation(); c.isLooping=!c.isLooping; rebuildCanvasList(); });
+    const mute = document.createElement('button'); mute.textContent = c.isMuted ? '🔇':'🔊'; mute.addEventListener('click',(e)=>{ e.stopPropagation(); c.isMuted=!c.isMuted; rebuildCanvasList(); });
+    ctrl.appendChild(play); ctrl.appendChild(stop); ctrl.appendChild(loop); ctrl.appendChild(mute);
+    out.appendChild(ctrl);
+    el.appendChild(out);
+  });
+}
+
+function rebuildAllBindings(){
+  const xSel = document.getElementById('xBind'), ySel = document.getElementById('yBind');
+  xSel.innerHTML = ''; ySel.innerHTML = '';
+  const none = document.createElement('option'); none.value=''; none.textContent='(none)';
+  xSel.appendChild(none.cloneNode(true)); ySel.appendChild(none.cloneNode(true));
+  
+  // Audio node parameters
+  for(const [id, info] of audioNodes){
+    const params = getNumericParams(info.node);
+    for(const p of params){
+      const opt = document.createElement('option'); opt.value = `node:${id}:${p.key}`; opt.textContent = `node:${id}:${p.key}`;
+      xSel.appendChild(opt); ySel.appendChild(opt.cloneNode(true));
+    }
+  }
+  
+  // Canvas parameters
+  for(const c of canvases){
+    const o1 = document.createElement('option'); o1.value=`canvas:${c.id}:speed`; o1.textContent=`canvas:${c.id}:speed`;
+    const o2 = document.createElement('option'); o2.value=`canvas:${c.id}:duration`; o2.textContent=`canvas:${c.id}:duration`;
+    xSel.appendChild(o1); xSel.appendChild(o2); ySel.appendChild(o1.cloneNode(true)); ySel.appendChild(o2.cloneNode(true));
+  }
+  
+  // Signal generator parameters
+  for(const [id, sig] of signalGens){
+    const params = getSignalGenParams(sig);
+    for(const p of params){
+      const opt = document.createElement('option'); opt.value = `sig:${id}:${p.key}`; opt.textContent = `sig:${id}:${p.key}`;
+      xSel.appendChild(opt); ySel.appendChild(opt.cloneNode(true));
+    }
+  }
+  
+  if(activeCanvasId){
+    const c = getCanvas(activeCanvasId);
+    if(c){ xSel.value = c.xBind || ''; ySel.value = c.yBind || ''; }
+  }
+}
+
+// ---------------------- UI wiring ----------------------
+document.querySelectorAll('[data-mk]').forEach(btn=>btn.addEventListener('click', ()=>makeAudioNode(btn.getAttribute('data-mk'))));
+
+document.querySelectorAll('[data-sig]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const type = btn.getAttribute('data-sig');
+    const id = uid('S');
+    signalGens.set(id, { id, type, params:{freq:1,amp:1,bias:0}, bindings:[]});
+    rebuildSigList(); rebuildAllBindings();
+  });
+});
+
+document.getElementById('newCanvas').addEventListener('click', ()=>{ newCanvas(); rebuildCanvasList(); updateActiveCanvasUI(); });
+document.getElementById('delCanvas').addEventListener('click', ()=>{ if(activeCanvasId) deleteCanvas(activeCanvasId); rebuildCanvasList(); updateActiveCanvasUI(); });
+document.getElementById('clearCanvas').addEventListener('click', ()=>{ if(activeCanvasId) clearCanvas(activeCanvasId); });
+
+document.getElementById('playAll').addEventListener('click', ()=>{ canvases.forEach(c=>{ if(!c.isMuted) playCanvas(c.id); }); });
+document.getElementById('pauseAll').addEventListener('click', ()=>{ canvases.forEach(c=>pauseCanvas(c.id)); });
+document.getElementById('stopAll').addEventListener('click', ()=>{ canvases.forEach(c=>stopCanvas(c.id)); renderAll(); renderTimelineVisualization(); });
+
+document.getElementById('canvasDuration').addEventListener('change',(e)=>{ if(activeCanvasId){ const c=getCanvas(activeCanvasId); c.duration=Math.max(100,Number(e.target.value)); if(c.currentTime>c.duration) c.currentTime=c.duration; updateTimelineSize(); renderTimelineVisualization(); }});
+document.getElementById('canvasLoop').addEventListener('change',(e)=>{ if(activeCanvasId) getCanvas(activeCanvasId).isLooping = e.target.checked; });
+document.getElementById('canvasMute').addEventListener('change',(e)=>{ if(activeCanvasId) getCanvas(activeCanvasId).isMuted = e.target.checked; rebuildCanvasList(); });
+document.getElementById('canvasSpeed').addEventListener('change',(e)=>{ if(activeCanvasId) getCanvas(activeCanvasId).speed = Number(e.target.value) || 1; });
+document.getElementById('canvasTimeSlider').addEventListener('input',(e)=>{ if(activeCanvasId){ const c = getCanvas(activeCanvasId); c.currentTime = Number(e.target.value); c.lastAppliedFrame = Math.floor(c.currentTime / TIMESTEP); renderAll(); renderTimelineVisualization(); }});
+document.getElementById('xBind').addEventListener('change',(e)=>{ if(activeCanvasId) getCanvas(activeCanvasId).xBind = e.target.value; });
+document.getElementById('yBind').addEventListener('change',(e)=>{ if(activeCanvasId) getCanvas(activeCanvasId).yBind = e.target.value; });
+document.getElementById('zoomRange').addEventListener('input', ()=>{ updateTimelineSize(); });
+
+document.querySelectorAll('[data-mk]').forEach(el=>el.addEventListener('click', ()=>{ rebuildNodeList(); rebuildAllBindings(); }));
+document.getElementById('canvasColor').addEventListener('change', ()=>{ if(activeCanvasId){ const c=getCanvas(activeCanvasId); c.color=document.getElementById('canvasColor').value; renderAll(); renderTimelineVisualization(); }});
+
+// resume audio on pointerdown
+window.addEventListener('pointerdown', ()=>{ if(audioCtx.state==='suspended') audioCtx.resume(); });
+
+// ---------------------- Enhanced Export/Import ----------------------
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const data = {
+    version:2, // bumped version to indicate new format
+    canvases: canvases.map(c=>({id:c.id,color:c.color,duration:c.duration,frames:Array.from(c.frames.entries()),xBind:c.xBind,yBind:c.yBind,speed:c.speed,isLooping:c.isLooping,isMuted:c.isMuted,currentTime:c.currentTime})),
+    signals: Array.from(signalGens.values()).map(s=>({id:s.id,type:s.type,params:s.params,bindings:s.bindings})),
+    nodes: Array.from(audioNodes.entries()).map(([id,info])=>({id,type:info.type})),
+    connections
+  };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `project-${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logInfo('Exported project');
+});
+
+const importFile = document.getElementById('importFile');
+document.getElementById('importBtn').addEventListener('click', ()=>importFile.click());
+importFile.addEventListener('change', (e)=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      audioNodes.clear(); connections.length=0; canvases.length=0; signalGens.clear(); canvasCounter=0;
+      
+      if(data.canvases){
+        data.canvases.forEach(cd=>{
+          const c = createCanvasModel();
+          c.id = cd.id; c.color = cd.color; c.duration = cd.duration || 10000;
+          c.xBind = cd.xBind || ''; c.yBind = cd.yBind || ''; c.speed = cd.speed || 1; c.isLooping = cd.isLooping !== undefined ? cd.isLooping : true; c.isMuted = cd.isMuted || false;
+          c.currentTime = cd.currentTime || 0; if(cd.frames) c.frames = new Map(cd.frames);
+          canvases.push(c); canvasCounter = Math.max(canvasCounter, parseInt(c.id.slice(1)) + 1 || canvasCounter);
+        });
+      }
+      
+      if(data.signals){
+        data.signals.forEach(s=> signalGens.set(s.id, {id:s.id,type:s.type,params:s.params || {freq:1,amp:1,bias:0},bindings:s.bindings || []}));
+      }
+      
+      if(data.nodes){
+        data.nodes.forEach(n=>{ try{ makeAudioNode(n.type); }catch(e){} });
+      }
+      
+      rebuildNodeList(); rebuildSigList(); rebuildCanvasList(); rebuildAllBindings(); updateActiveCanvasUI(); updateTimelineSize(); renderAll(); renderTimelineVisualization(); logInfo('Imported project');
+    }catch(err){
+      logInfo('Import failed: '+err.message);
+    }
+  };
+  reader.readAsText(file); e.target.value = '';
+});
+
+// ---------------------- Initialization ----------------------
+function updateActiveCanvasUI(){
+  const name = document.getElementById('activeCanvasName');
+  if(!activeCanvasId){ name.textContent='—'; document.getElementById('canvasDuration').disabled=true; document.getElementById('canvasLoop').disabled=true; document.getElementById('canvasMute').disabled=true; document.getElementById('canvasSpeed').disabled=true; document.getElementById('canvasTimeSlider').disabled=true; return; }
+  const c = getCanvas(activeCanvasId); if(!c) return;
+  name.textContent = c.id; name.style.color = c.color;
+  document.getElementById('canvasDuration').disabled=false; document.getElementById('canvasDuration').value = c.duration;
+  document.getElementById('canvasLoop').disabled=false; document.getElementById('canvasLoop').checked = c.isLooping;
+  document.getElementById('canvasMute').disabled=false; document.getElementById('canvasMute').checked = c.isMuted;
+  document.getElementById('canvasSpeed').disabled=false; document.getElementById('canvasSpeed').value = c.speed;
+  document.getElementById('canvasTimeSlider').disabled=false; document.getElementById('canvasTimeSlider').max = c.duration; document.getElementById('canvasTimeSlider').value = c.currentTime;
+}
+
+// minimal initial state
+newCanvas();
+rebuildCanvasList();
+rebuildAllBindings();
+rebuildNodeList();
+rebuildSigList();
+updateActiveCanvasUI();
+
+// set a couple nodes for convenience
+setTimeout(()=>{
+  const o = makeAudioNode('osc');
+  const g = makeAudioNode('gain');
+  if(o && g){ 
+    setTimeout(()=>{ 
+      try{ connectNode(o,g); connectNode(g,'dest'); }catch(e){} 
+    }, 80); 
+    if(activeCanvasId){ 
+      const c = getCanvas(activeCanvasId); 
+      c.xBind = `node:${o}:frequency`; 
+      c.yBind = `node:${g}:gain`; 
+      rebuildAllBindings(); 
+    } 
+  }
+}, 200);
+
+// final initial sizing
+setTimeout(()=>{ resizeAll(); }, 150);
+</script>
+</body>
+</html>
