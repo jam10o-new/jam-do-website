@@ -38,6 +38,91 @@
   .connection-label{flex:1;font-size:11px}
   .connection-controls{display:flex;gap:4px}
   .recording-indicator{color:#ff6b6b;font-size:10px;animation:pulse 0.5s infinite}
+  
+  /* Mobile responsive styles */
+  @media (max-width: 768px) {
+    .row {
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    #sidebar {
+      width: 100%;
+      height: 40vh;
+      min-height: 40vh;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    
+    #main {
+      height: 60vh;
+      min-height: 60vh;
+    }
+    
+    #canvasWrap {
+      padding: 4px;
+      min-height: 0;
+      flex: 1;
+    }
+    
+    #footer {
+      height: 160px;
+      min-height: 160px;
+      padding: 4px;
+    }
+    
+    .timeline-controls {
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    
+    .timeline-controls input[type=number] {
+      width: 60px;
+    }
+    
+    #canvasTimeSlider {
+      width: 120px;
+    }
+    
+    .global-controls {
+      gap: 4px;
+    }
+    
+    button {
+      padding: 8px 10px; /* Larger touch targets */
+    }
+    
+    .section {
+      padding: 4px;
+    }
+    
+    .mono {
+      font-size: 11px;
+    }
+    
+    /* Hide non-essential elements on mobile */
+    .global-controls .mono.small:not(:first-child) {
+      display: none;
+    }
+  }
+  
+  /* Desktop-only styles */
+  @media (min-width: 769px) {
+    /* Ensure desktop layout remains unchanged */
+    .row {
+      flex-direction: row;
+    }
+    
+    #sidebar {
+      width: 340px;
+      height: 100%;
+    }
+    
+    #main {
+      height: 100%;
+    }
+  }
 </style>
 </head>
 <body>
@@ -131,6 +216,8 @@
 
 <script>
 /* Fixed single-file DAW — unified timeline with enhanced features:
+   - Mobile responsive layout with proper touch handling
+   - Logarithmic scaling for frequency parameters with grid lines
    - Audio input nodes (file/mic) with loopable buffers
    - Connection view with disconnect functionality
    - Smooth parameter interpolation
@@ -147,6 +234,7 @@ const infoBox = document.getElementById('infoBox');
 const liveIndicator = document.getElementById('liveIndicator');
 
 let ratio = window.devicePixelRatio || 1;
+let isMobile = window.innerWidth <= 768;
 
 // State
 let canvases = [];
@@ -166,6 +254,54 @@ const connections = [];
 const signalGens = new Map();
 
 function logInfo(s){ infoBox.textContent = s; }
+
+// ---------------------- Mobile Detection & Touch Handling ----------------------
+function handleTouchEvent(ev) {
+  // Prevent default touch behaviors that interfere with drawing
+  ev.preventDefault();
+  
+  if (ev.type === 'touchstart' || ev.type === 'touchmove') {
+    // Convert touch to mouse event for compatibility
+    const touch = ev.touches[0];
+    const mouseEv = new MouseEvent(ev.type.replace('touch', 'mouse'), {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      buttons: 1
+    });
+    
+    if (ev.type === 'touchstart') {
+      drawCanvas.dispatchEvent(new PointerEvent('pointerdown', {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        pointerId: 1,
+        pointerType: 'touch',
+        isPrimary: true
+      }));
+    } else if (ev.type === 'touchmove') {
+      drawCanvas.dispatchEvent(new PointerEvent('pointermove', {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        pointerId: 1,
+        pointerType: 'touch',
+        isPrimary: true
+      }));
+    }
+  } else if (ev.type === 'touchend') {
+    drawCanvas.dispatchEvent(new PointerEvent('pointerup', {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true
+    }));
+  }
+}
+
+// Add touch event listeners for mobile
+if ('ontouchstart' in window) {
+  drawCanvas.addEventListener('touchstart', handleTouchEvent, { passive: false });
+  drawCanvas.addEventListener('touchmove', handleTouchEvent, { passive: false });
+  drawCanvas.addEventListener('touchend', handleTouchEvent, { passive: false });
+  drawCanvas.addEventListener('touchcancel', handleTouchEvent, { passive: false });
+}
 
 // ---------------------- Utilities ----------------------
 function uid(prefix='id'){ return prefix + Math.random().toString(16).slice(2,9); }
@@ -334,11 +470,71 @@ function getSignalGenParams(sig){
   ];
 }
 
+// ---------------------- Logarithmic Scaling Functions ----------------------
+// Convert normalized value (0-1) to logarithmic value within range
+function normToLog(norm, min, max) {
+  // Handle edge cases
+  if (norm <= 0) return min;
+  if (norm >= 1) return max;
+  
+  // Logarithmic scaling: norm = log(value/min) / log(max/min)
+  // So: value = min * (max/min)^norm
+  return min * Math.pow(max / min, norm);
+}
+
+// Convert logarithmic value back to normalized value
+function logToNorm(value, min, max) {
+  if (value <= min) return 0;
+  if (value >= max) return 1;
+  return Math.log(value / min) / Math.log(max / min);
+}
+
+// Generate logarithmic grid lines
+function generateLogGridLines(min, max, base = 10) {
+  const lines = [];
+  const logMin = Math.log(min) / Math.log(base);
+  const logMax = Math.log(max) / Math.log(base);
+  
+  // Major lines at powers of the base
+  for (let i = Math.floor(logMin); i <= Math.ceil(logMax); i++) {
+    const value = Math.pow(base, i);
+    if (value >= min && value <= max) {
+      lines.push({value, isMajor: true});
+      
+      // Add minor lines between major lines (2, 3, 4, 5, 6, 7, 8, 9)
+      if (i < Math.ceil(logMax)) {
+        for (let j = 2; j < base; j++) {
+          const minorValue = value * j;
+          if (minorValue <= max) {
+            lines.push({value: minorValue, isMajor: false});
+          }
+        }
+      }
+    }
+  }
+  
+  return lines.sort((a, b) => a.value - b.value);
+}
+
 function convertPointToParam(norm, pname){
-  if(pname.match(/frequency|delayTime|offset/)) return 20 + norm * (2000 - 20);
-  if(pname.match(/gain|pan|ratio|Q/)){
+  // Logarithmic scaling for frequency parameters
+  if (pname.match(/frequency/)) {
+    const minFreq = 20;   // 20 Hz
+    const maxFreq = 20000; // 20 kHz (human hearing range)
+    return normToLog(norm, minFreq, maxFreq);
+  }
+  
+  // Logarithmic scaling for gain (dB)
+  if (pname === 'gain') {
+    const minGain = 0.001; // -60 dB
+    const maxGain = 2;     // +6 dB
+    return normToLog(norm, minGain, maxGain);
+  }
+  
+  // Linear scaling for other parameters
+  if(pname.match(/delayTime|offset/)) return 20 + norm * (2000 - 20);
+  if(pname.match(/pan|ratio|Q/)){
     if(pname==='pan') return -1 + norm*2;
-    if(pname==='gain') return norm;
     if(pname==='ratio') return 1 + norm*19;
     if(pname==='Q') return 0.1 + norm*30;
     return norm;
@@ -351,13 +547,21 @@ function convertPointToParam(norm, pname){
     return norm;
   }
   // Signal generator parameters
-  if(pname === 'freq') return 0.1 + norm * 20;
+  if(pname === 'freq') {
+    const minFreq = 0.1;
+    const maxFreq = 20;
+    return normToLog(norm, minFreq, maxFreq);
+  }
   if(pname === 'amp') return norm * 5;
   if(pname === 'bias') return -2 + norm * 4;
   // Input node parameters
-  if(pname === 'volume') return norm * 2; // 0 to 2
-  if(pname === 'playbackRate') return 0.25 + norm * 3; // 0.25 to 3.25
-  if(pname === 'position') return norm; // 0 to 1
+  if(pname === 'volume') {
+    const minVol = 0.001;
+    const maxVol = 2;
+    return normToLog(norm, minVol, maxVol);
+  }
+  if(pname === 'playbackRate') return 0.25 + norm * 3;
+  if(pname === 'position') return norm;
   return norm;
 }
 
@@ -514,7 +718,7 @@ function evaluateSignals(globalSeconds){
       } else if(type === 'node'){
         mappedValue = convertPointToParam(norm, param);
       } else if(type === 'sig'){
-        if(param === 'freq') mappedValue = 0.1 + norm * 20;
+        if(param === 'freq') mappedValue = normToLog(norm, 0.1, 20);
         else if(param === 'amp') mappedValue = norm * 5;
         else if(param === 'bias') mappedValue = -2 + norm * 4;
         else mappedValue = norm;
@@ -609,7 +813,7 @@ function commitStrokeToCanvas(canvas, stroke, offsetMs){
   updateTimelineSize();
 }
 
-// ---------------------- Enhanced rendering ----------------------
+// ---------------------- Enhanced rendering with logarithmic grid ----------------------
 function renderAll(){
   const ctx = drawCtx;
   if(!ctx) return;
@@ -621,11 +825,79 @@ function renderAll(){
   // background
   ctx.fillStyle = '#101010'; ctx.fillRect(0,0,w,h);
   
-  // grid
+  // Get active canvas for binding-aware grid
+  const activeCanvas = activeCanvasId ? getCanvas(activeCanvasId) : null;
+  const xBindParam = activeCanvas?.xBind?.split(':').pop() || '';
+  const yBindParam = activeCanvas?.yBind?.split(':').pop() || '';
+  
+  // Draw grid based on bindings
   const step = 40;
   ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-  for(let x=0;x<w;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
-  for(let y=0;y<h;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  
+  // X-axis grid (vertical lines)
+  if (xBindParam.match(/frequency/)) {
+    // Logarithmic grid for frequency
+    const minFreq = 20;
+    const maxFreq = 20000;
+    const gridLines = generateLogGridLines(minFreq, maxFreq, 10);
+    
+    for (const line of gridLines) {
+      const normX = logToNorm(line.value, minFreq, maxFreq);
+      const x = normX * w;
+      
+      ctx.strokeStyle = line.isMajor ? '#222' : '#0f0f0f';
+      ctx.lineWidth = line.isMajor ? 1 : 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+      
+      // Label major grid lines
+      if (line.isMajor && line.value <= 2000) {
+        ctx.fillStyle = '#444';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        const label = line.value >= 1000 ? (line.value/1000).toFixed(0) + 'k' : line.value.toFixed(0);
+        ctx.fillText(label + 'Hz', x, h - 4);
+      }
+    }
+  } else {
+    // Linear grid for other parameters
+    for(let x=0;x<w;x+=step){ 
+      ctx.beginPath(); 
+      ctx.moveTo(x,0); 
+      ctx.lineTo(x,h); 
+      ctx.stroke(); 
+    }
+  }
+  
+  // Y-axis grid (horizontal lines)
+  if (yBindParam.match(/frequency|gain|volume/)) {
+    // Logarithmic grid for frequency/gain on Y-axis
+    const minVal = yBindParam.match(/frequency/) ? 20 : 0.001;
+    const maxVal = yBindParam.match(/frequency/) ? 20000 : 2;
+    const gridLines = generateLogGridLines(minVal, maxVal, 10);
+    
+    for (const line of gridLines) {
+      const normY = 1 - logToNorm(line.value, minVal, maxVal); // Invert for canvas coordinates
+      const y = normY * h;
+      
+      ctx.strokeStyle = line.isMajor ? '#222' : '#0f0f0f';
+      ctx.lineWidth = line.isMajor ? 1 : 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+  } else {
+    // Linear grid for other parameters
+    for(let y=0;y<h;y+=step){ 
+      ctx.beginPath(); 
+      ctx.moveTo(0,y); 
+      ctx.lineTo(w,y); 
+      ctx.stroke(); 
+    }
+  }
   
   // draw frames for canvases up to their currentTime
   for(const c of canvases){
@@ -664,12 +936,25 @@ function renderAll(){
   }
   
   // text info
-  ctx.fillStyle = '#ddd'; ctx.font = '12px monospace';
+  ctx.fillStyle = '#ddd'; ctx.font = isMobile ? '10px monospace' : '12px monospace';
   ctx.fillText(`Active: ${activeCanvasId || '—'}`, 8, 14);
   if(activeCanvasId){
     const c = getCanvas(activeCanvasId);
     if(c) ctx.fillText(`Time: ${(c.currentTime/1000).toFixed(3)}s`, 8, 28);
   }
+  
+  // Show scaling info
+  if (activeCanvas) {
+    if (xBindParam.match(/frequency/)) {
+      ctx.fillStyle = '#666';
+      ctx.fillText('X: Log', w - 50, 14);
+    }
+    if (yBindParam.match(/frequency|gain|volume/)) {
+      ctx.fillStyle = '#666';
+      ctx.fillText('Y: Log', w - 50, 28);
+    }
+  }
+  
   ctx.restore();
 }
 
@@ -739,6 +1024,7 @@ function renderTimelineVisualization(){
 
 // ---------------------- Resize handling ----------------------
 function resizeAll(){
+  isMobile = window.innerWidth <= 768;
   ratio = window.devicePixelRatio || 1;
   const rect = drawCanvas.getBoundingClientRect();
   drawCanvas.width = Math.floor(rect.width * ratio);
@@ -798,13 +1084,34 @@ requestAnimationFrame(tick);
 // ---------------------- Pointer drawing ----------------------
 function toLocalPoint(ev){
   const r = drawCanvas.getBoundingClientRect();
-  return { x: (ev.clientX - r.left) / r.width, y: (ev.clientY - r.top) / r.height };
+  // Handle touch events
+  let clientX, clientY;
+  if (ev.touches && ev.touches[0]) {
+    clientX = ev.touches[0].clientX;
+    clientY = ev.touches[0].clientY;
+  } else if (ev.clientX !== undefined) {
+    clientX = ev.clientX;
+    clientY = ev.clientY;
+  } else if (ev.changedTouches && ev.changedTouches[0]) {
+    clientX = ev.changedTouches[0].clientX;
+    clientY = ev.changedTouches[0].clientY;
+  } else {
+    return { x: 0, y: 0 };
+  }
+  
+  return { 
+    x: Math.max(0, Math.min(1, (clientX - r.left) / r.width)), 
+    y: Math.max(0, Math.min(1, (clientY - r.top) / r.height)) 
+  };
 }
 
-drawCanvas.addEventListener('pointerdown', e=>{
+// Enhanced pointer handling for mobile
+function handlePointerDown(e) {
   e.preventDefault();
   if(!activeCanvasId) return;
-  try{ drawCanvas.setPointerCapture(e.pointerId); } catch(e){}
+  try{ 
+    if (e.pointerId) drawCanvas.setPointerCapture(e.pointerId); 
+  } catch(e){}
   drawing = true;
   stroke = [];
   gestureOffsetMs = getCanvasById(activeCanvasId).currentTime;
@@ -815,27 +1122,49 @@ drawCanvas.addEventListener('pointerdown', e=>{
   applyPointToBindings(getCanvasById(activeCanvasId), pt);
   liveIndicator.style.display = 'inline';
   renderAll();
-});
+}
 
-drawCanvas.addEventListener('pointermove', e=>{
+function handlePointerMove(e) {
   if(!drawing) return;
+  e.preventDefault();
   const p = toLocalPoint(e);
   const pt = { t: performance.now() - strokeStartTime, x: p.x, y: p.y };
   stroke.push(pt);
   applyPointToBindings(getCanvasById(activeCanvasId), pt);
   renderAll();
-});
+}
 
-drawCanvas.addEventListener('pointerup', e=>{
+function handlePointerUp(e) {
   if(!drawing) return;
+  e.preventDefault();
+  try{ 
+    if (e.pointerId) drawCanvas.releasePointerCapture(e.pointerId); 
+  }catch(e){}
   drawing = false;
-  try{ drawCanvas.releasePointerCapture(e.pointerId); }catch(e){}
   const c = getCanvasById(activeCanvasId);
   if(c && stroke.length > 0) commitStrokeToCanvas(c, stroke, gestureOffsetMs);
   stroke = [];
   liveIndicator.style.display = 'none';
   renderAll();
   renderTimelineVisualization();
+}
+
+// Add event listeners for both pointer and touch
+drawCanvas.addEventListener('pointerdown', handlePointerDown);
+drawCanvas.addEventListener('pointermove', handlePointerMove);
+drawCanvas.addEventListener('pointerup', handlePointerUp);
+drawCanvas.addEventListener('pointercancel', handlePointerUp);
+
+// Additional touch event listeners for better mobile support
+drawCanvas.addEventListener('touchstart', handlePointerDown, { passive: false });
+drawCanvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+drawCanvas.addEventListener('touchend', handlePointerUp, { passive: false });
+drawCanvas.addEventListener('touchcancel', handlePointerUp, { passive: false });
+
+// Prevent context menu on long press (mobile)
+drawCanvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  return false;
 });
 
 // ---------------------- Connection List ----------------------
@@ -1292,7 +1621,7 @@ window.addEventListener('pointerdown', ()=>{ if(audioCtx.state==='suspended') au
 // ---------------------- Enhanced Export/Import ----------------------
 document.getElementById('exportBtn').addEventListener('click', ()=>{
   const data = {
-    version: 4, // bumped version for new features
+    version: 5, // bumped version for new features
     canvases: canvases.map(c=>({id:c.id,color:c.color,duration:c.duration,frames:Array.from(c.frames.entries()),xBind:c.xBind,yBind:c.yBind,speed:c.speed,isLooping:c.isLooping,isMuted:c.isMuted,currentTime:c.currentTime})),
     signals: Array.from(signalGens.values()).map(s=>({id:s.id,type:s.type,params:s.params,bindings:s.bindings})),
     nodes: Array.from(audioNodes.entries()).map(([id,info])=>({id,type:info.type})),
