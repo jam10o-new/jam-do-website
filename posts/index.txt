@@ -1,3 +1,2 @@
 toys.md
-
-- [testing_editor](posts/testing_editor.md)
+testing_editor.md
