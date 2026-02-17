@@ -5,452 +5,276 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>jam.do</title>
     <style>
-        :root {
-            --cyber-accent: #00c6ff;
-            --cyber-accent-dark: #0072ff;
-            --cyber-dark: #0a192f;
-            --cyber-mid: #112240;
-            --cyber-light: #e6f1ff;
-            --cyber-border: rgba(0, 198, 255, 0.3);
-        }
-        
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
-            font-family: 'Courier New', Courier, monospace;
-            background-color: var(--cyber-dark);
-            color: var(--cyber-light);
-            line-height: 1.7;
-            min-height: 100vh;
-            position: relative;
-            padding: 20px;
-            overflow-x: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f5f0e8;
+            color: #2a2a2a;
+            line-height: 1.6;
         }
-        
-        header {
-            padding: 1.5rem 0;
-            text-align: center;
-            position: relative;
-            margin-bottom: 40px;
-            max-width: 800px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        
-        .logo {
-            font-size: 2.5rem;
-            font-weight: bold;
-            background: linear-gradient(45deg, var(--cyber-accent), var(--cyber-accent-dark));
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            letter-spacing: 1px;
-        }
-        
-        #sidebar-toggle {
-            position: fixed;
-            top: 25px;
-            left: 25px;
-            width: 40px;
-            height: 40px;
-            background: var(--cyber-mid);
-            border: 1px solid var(--cyber-border);
-            color: var(--cyber-accent);
-            font-size: 1.2rem;
-            cursor: pointer;
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-        }
-        
-        #sidebar-toggle:hover {
-            background: rgba(0, 198, 255, 0.1);
-            transform: scale(1.05);
-        }
-        
-        #sidebar {
+
+        #viewport {
             position: fixed;
             top: 0;
             left: 0;
-            height: 100vh;
-            width: 280px;
-            background: rgba(10, 25, 47, 0.95);
-            border-right: 1px solid var(--cyber-border);
-            padding: 70px 20px 20px;
-            overflow-y: auto;
-            z-index: 99;
-            transform: translateX(-100%);
-            transition: transform 0.3s ease;
-            backdrop-filter: blur(5px);
-        }
-        
-        #sidebar.active {
-            transform: translateX(0);
-        }
-        
-        #sidebar h2 {
-            margin-bottom: 1.5rem;
-            font-size: 1.3rem;
-            position: relative;
-            color: var(--cyber-accent);
-            padding-bottom: 0.5rem;
-        }
-        
-        #sidebar h2::after {
-            content: '';
-            display: block;
             width: 100%;
-            height: 2px;
-            background: linear-gradient(to right, transparent, var(--cyber-accent), transparent);
-            position: absolute;
-            bottom: 0;
-            left: 0;
+            height: 100%;
+            overflow: auto;
         }
-        
-        #post-list {
-            list-style: none;
-        }
-        
-        #post-list li {
-            padding: 0.7rem 0;
-            margin-bottom: 0.5rem;
-            transition: all 0.3s ease;
+
+        #grid-container {
             position: relative;
-            padding-left: 1.8rem;
+            transform-origin: 0 0;
         }
-        
-        #post-list li::before {
-            content: '';
+
+        .tile {
             position: absolute;
-            left: 0.8rem;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 8px;
-            height: 8px;
-            background: rgba(0, 198, 255, 0.3);
-            transition: all 0.3s ease;
-        }
-        
-        #post-list li.active::before {
-            background: var(--cyber-accent);
-            box-shadow: 0 0 8px var(--cyber-accent);
-            transform: translateY(-50%) scale(1.3);
-        }
-        
-        #post-list li:hover {
-            background: rgba(0, 198, 255, 0.1);
-        }
-        
-        #post-list li:hover::before {
-            background: var(--cyber-accent);
-            transform: translateY(-50%) scale(1.2);
-        }
-        
-        #post-list a {
-            color: var(--cyber-light);
-            text-decoration: none;
-            display: block;
-            white-space: nowrap;
             overflow: hidden;
-            text-overflow: ellipsis;
         }
-        
-        #post-list a:hover {
-            color: var(--cyber-accent);
-        }
-        
-        #content {
-            max-width: 800px;
-            margin: 0 auto;
+
+        .tile img {
             width: 100%;
-            padding-top: 20px;
-        }
-        
-        .post {
-            padding: 2rem 0;
-            margin-bottom: 3rem;
-            position: relative;
-        }
-        
-        .post + .post::before {
-            content: '';
+            height: 100%;
+            object-fit: cover;
             display: block;
-            width: 25%;
-            max-width: 200px;
-            height: 5px;
-            background: linear-gradient(to right, transparent, var(--cyber-accent), transparent);
-            margin: 0 auto 3rem;
-            border-radius: 3px;
         }
-        
-        .post h1 {
-            font-size: 2.2rem;
-            margin-bottom: 1.5rem;
-            color: var(--cyber-accent);
-            position: relative;
-            padding-bottom: 0.5rem;
-        }
-        
-        .post h1::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(to right, transparent, var(--cyber-accent), transparent);
-        }
-        
-        .post h2 {
-            font-size: 1.6rem;
-            margin: 1.5rem 0 1rem;
-            color: var(--cyber-accent);
-            position: relative;
-            padding-bottom: 0.3rem;
-        }
-        
-        .post h2::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 80px;
-            height: 2px;
-            background: var(--cyber-accent);
-        }
-        
-        .post h3 {
-            font-size: 1.3rem;
-            margin: 1.2rem 0 0.8rem;
-            color: var(--cyber-accent);
-        }
-        
-        .post p {
-            margin-bottom: 1.2rem;
-            font-size: 1.05rem;
-        }
-        
-        .post img {
-            max-width: 100%;
-            margin: 1.5rem 0;
-            border: 1px solid var(--cyber-border);
-        }
-        
-        .post a {
-            color: var(--cyber-accent);
-            text-decoration: none;
-            position: relative;
-        }
-        
-        .post a::after {
-            content: '';
-            position: absolute;
-            bottom: -2px;
-            left: 0;
-            width: 100%;
-            height: 1px;
-            background: var(--cyber-accent);
-            transform: scaleX(0);
-            transform-origin: right;
-            transition: transform 0.3s ease;
-        }
-        
-        .post a:hover::after {
-            transform: scaleX(1);
-            transform-origin: left;
-        }
-        
-        .post pre {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 1rem;
-            overflow-x: auto;
-            margin: 1.5rem 0;
-            border: 1px solid var(--cyber-border);
-        }
-        
-        .post code {
-            font-family: 'Courier New', Courier, monospace;
-            color: var(--cyber-accent);
-        }
-        
-        .post blockquote {
-            border-left: 3px solid var(--cyber-accent);
-            padding-left: 1rem;
-            margin: 1.5rem 0;
-            color: rgba(230, 241, 255, 0.8);
-            font-style: italic;
-        }
-        
-        .post ul, .post ol {
-            margin: 1rem 0 1rem 1.5rem;
-        }
-        
-        .post li {
-            margin-bottom: 0.5rem;
-        }
-        
-        .cyber-loader {
+
+        .tile.color-fill {
             display: flex;
-            justify-content: center;
             align-items: center;
-            height: 200px;
+            justify-content: center;
         }
-        
-        .cyber-loader::after {
-            content: '';
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(0, 198, 255, 0.3);
-            border-top: 4px solid var(--cyber-accent);
-            animation: spin 1s linear infinite;
+
+        .post-tile {
+            background: #fffef8;
+            padding: 25px;
+            overflow-y: auto;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.06);
         }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+
+        .post-tile h1 {
+            font-size: 1.3rem;
+            margin-bottom: 0.8rem;
+            font-weight: 600;
         }
-        
-        @media (max-width: 768px) {
-            #sidebar {
-                width: 85%;
-            }
-            
-            .post {
-                padding: 1.5rem 0;
-            }
+
+        .post-tile h2 {
+            font-size: 1.1rem;
+            margin: 1rem 0 0.5rem;
+            font-weight: 600;
+        }
+
+        .post-tile h3 {
+            font-size: 0.95rem;
+            margin: 0.8rem 0 0.4rem;
+            font-weight: 600;
+        }
+
+        .post-tile p {
+            margin-bottom: 0.8rem;
+            font-size: 0.9rem;
+        }
+
+        .post-tile a {
+            color: #c45c3e;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .post-tile pre {
+            background: #f0ebe3;
+            padding: 10px;
+            overflow-x: auto;
+            margin: 0.8rem 0;
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+
+        .post-tile code {
+            font-family: monospace;
+            background: #f0ebe3;
+            padding: 2px 5px;
+            font-size: 0.85em;
+        }
+
+        .post-tile blockquote {
+            border-left: 3px solid #c45c3e;
+            padding-left: 0.8rem;
+            margin: 0.8rem 0;
+            color: #555;
+        }
+
+        .post-tile ul, .post-tile ol {
+            margin: 0.8rem 0 0.8rem 1.5rem;
+        }
+
+        .post-tile li {
+            margin-bottom: 0.3rem;
+        }
+
+        #loader {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.9rem;
+            color: #888;
+            z-index: 100;
         }
     </style>
 </head>
 <body>
-    <button id="sidebar-toggle">☰</button>
-    
-    <div id="sidebar">
-        <h2>posts</h2>
-        <ul id="post-list"></ul>
+    <div id="loader">loading...</div>
+    <div id="viewport">
+        <div id="grid-container"></div>
     </div>
-    
-    <header>
-        <div class="logo">jam.do</div>
-    </header>
-    
-    <main id="content">
-        <div class="cyber-loader"></div>
-    </main>
 
     <script>
-        // DOM elements
-        const content = document.getElementById('content');
-        const postList = document.getElementById('post-list');
-        const sidebarToggle = document.getElementById('sidebar-toggle');
-        const sidebar = document.getElementById('sidebar');
+        const warmPastels = [
+            '#e8d5c4', '#d4c4b0', '#c9b8a4', '#e6d5c9',
+            '#f0e6d8', '#e4d4c0', '#d9c9b6', '#f5ebe0',
+            '#e8ddd4', '#ddd0c0', '#f2e6d8', '#e5d9cc',
+            '#f0e8e0', '#e8e0d5', '#ddd5c8', '#ede5d8'
+        ];
 
-        // Toggle sidebar
-        sidebarToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('active');
-        });
+        const ABSOLUTE_MIN_TILE = 180;
+        const ABSOLUTE_MAX_TILE = 400;
+        const POST_MIN_WIDTH = 300;
+        const POST_MAX_WIDTH = 500;
+        const POST_MIN_HEIGHT = 250;
+        const POST_MAX_HEIGHT = 500;
+        const MARGIN = 30;
+        const BUFFER_TILES = 3;
 
-        // Close sidebar when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!sidebar.contains(e.target) && 
-                e.target !== sidebarToggle && 
-                sidebar.classList.contains('active')) {
-                sidebar.classList.remove('active');
+        const container = document.getElementById('grid-container');
+        const viewport = document.getElementById('viewport');
+        
+        let posts = [];
+        let images = [];
+        let renderedTiles = new Map();
+        let tileTree = null;
+        let nextTileId = 0;
+        let postsLoaded = 0;
+        let containerHeight = 0;
+        let viewportWidth = 0;
+        let viewportHeight = 0;
+
+        function getRandomPastel() {
+            return warmPastels[Math.floor(Math.random() * warmPastels.length)];
+        }
+
+        function getRandomImage() {
+            if (images.length === 0) return null;
+            return images[Math.floor(Math.random() * images.length)];
+        }
+
+        // A tile in our subdivision tree
+        class Tile {
+            constructor(x, y, w, h, parent = null) {
+                this.id = nextTileId++;
+                this.x = x;
+                this.y = y;
+                this.w = w;
+                this.h = h;
+                this.parent = parent;
+                this.children = null;
+                this.isPost = false;
+                this.postData = null;
+                this.content = null;
+                this.element = null;
             }
-        });
 
-        // Load blog posts
-        async function loadBlogPosts() {
-            try {
-                // Fetch post index
-                const postIndexUrl = "posts/index.txt";
-                const response = await fetch(postIndexUrl);
-                const postListText = await response.text();
-                const postUrls = postListText.split('\n').filter(url => url.trim() !== '');
+            canSplit() {
+                return (this.w > ABSOLUTE_MIN_TILE * 1.5 && this.w > this.h * 0.5) ||
+                       (this.h > ABSOLUTE_MIN_TILE * 1.5 && this.h > this.w * 0.5);
+            }
+
+            canBePost() {
+                return this.w >= POST_MIN_WIDTH && this.w <= POST_MAX_WIDTH &&
+                       this.h >= POST_MIN_HEIGHT && this.h <= POST_MAX_HEIGHT &&
+                       this.x >= MARGIN && (this.x + this.w) <= (viewportWidth - MARGIN);
+            }
+
+            split() {
+                if (this.children) return;
                 
-                // Clear loading indicator
-                content.innerHTML = '';
+                const canSplitH = this.w > ABSOLUTE_MIN_TILE * 1.5 && this.w > this.h * 0.5;
+                const canSplitV = this.h > ABSOLUTE_MIN_TILE * 1.5 && this.h > this.w * 0.5;
                 
-                if (postUrls.length === 0) {
-                    showUnderConstruction();
-                    return;
+                let splitH;
+                if (canSplitH && canSplitV) {
+                    splitH = this.w > this.h ? Math.random() > 0.3 : Math.random() < 0.3;
+                } else {
+                    splitH = canSplitH;
                 }
-                
-                // Generate sidebar
-                generateSidebar(postUrls);
-                
-                // Load the first post by default
-                if (postUrls.length > 0) {
-                    await loadBlogPost(postUrls[0]);
-                    setActivePost(postUrls[0]);
+
+                let r1, r2;
+                if (splitH) {
+                    const minSplit = Math.max(ABSOLUTE_MIN_TILE, this.w * 0.3);
+                    const maxSplit = this.w - ABSOLUTE_MIN_TILE;
+                    const splitPos = minSplit + Math.random() * (maxSplit - minSplit);
+                    r1 = new Tile(this.x, this.y, splitPos, this.h, this);
+                    r2 = new Tile(this.x + splitPos, this.y, this.w - splitPos, this.h, this);
+                } else {
+                    const minSplit = Math.max(ABSOLUTE_MIN_TILE, this.h * 0.3);
+                    const maxSplit = this.h - ABSOLUTE_MIN_TILE;
+                    const splitPos = minSplit + Math.random() * (maxSplit - minSplit);
+                    r1 = new Tile(this.x, this.y, this.w, splitPos, this);
+                    r2 = new Tile(this.x, this.y + splitPos, this.w, this.h - splitPos, this);
                 }
-            } catch (error) {
-                console.error('Error loading posts:', error);
-                showErrorMessage();
+
+                this.children = [r1, r2];
+                return [r1, r2];
             }
         }
 
-        function generateSidebar(postUrls) {
-            postList.innerHTML = '';
-            
-            postUrls.forEach(url => {
-                const listItem = document.createElement('li');
-                
-                const link = document.createElement('a');
-                link.href = '#';
-                link.textContent = url.replace('.md', '').replace(/-/g, ' ');
-                link.dataset.post = url;
-                
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    loadBlogPost(url);
-                    setActivePost(url);
-                    sidebar.classList.remove('active');
+        async function loadImages() {
+            try {
+                const response = await fetch('images/index.txt');
+                if (!response.ok) throw new Error('No image index');
+                const text = await response.text();
+                const lines = text.split('\n').filter(l => l.trim());
+                images = lines.map(line => {
+                    const parts = line.split('|');
+                    return { src: `images/${parts[0]}`, alt: parts[1] || '' };
                 });
-                
-                listItem.appendChild(link);
-                postList.appendChild(listItem);
-            });
+            } catch (e) {
+                images = [];
+            }
         }
 
-        async function loadBlogPost(postUrl) {
+        async function loadPosts() {
             try {
-                content.innerHTML = '<div class="cyber-loader"></div>';
+                const response = await fetch('posts/index.txt');
+                if (!response.ok) throw new Error('No posts');
+                const text = await response.text();
+                const urls = text.split('\n').filter(u => u.trim());
                 
-                const postRealUrl = `posts/${postUrl}`;
-                const response = await fetch(postRealUrl);
-                const markdown = await response.text();
-                
-                if (!markdown) {
-                    throw new Error('Post not found');
+                for (const url of urls) {
+                    try {
+                        const res = await fetch(`posts/${url}`);
+                        const markdown = await res.text();
+                        posts.push({
+                            url: url,
+                            title: url.replace('.md', '').replace(/-/g, ' '),
+                            html: renderMarkdown(markdown)
+                        });
+                    } catch (e) {
+                        console.error('Failed to load post:', url);
+                    }
                 }
-                
-                const html = renderMarkdown(markdown);
-                content.innerHTML = `<div class="post">${html}</div>`;
-                
-                // Add event listeners to internal post links
-                document.querySelectorAll('.post a[data-internal]').forEach(link => {
-                    link.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        const postName = this.getAttribute('href').replace('.md', '') + '.md';
-                        loadBlogPost(postName);
-                        setActivePost(postName);
-                        sidebar.classList.remove('active');
-                    });
-                });
-            } catch (error) {
-                console.error('Error loading post:', error);
-                content.innerHTML = `
-                    <div class="post">
-                        <h1>Error Loading Post</h1>
-                        <p>The requested post could not be loaded: ${error.message}</p>
-                    </div>
-                `;
+            } catch (e) {
+                posts = [];
             }
         }
 
@@ -464,11 +288,7 @@
             lines.forEach(line => {
                 if (line.startsWith('```')) {
                     inCode = !inCode;
-                    if (inCode) {
-                        html += '<pre><code>';
-                    } else {
-                        html += '</code></pre>';
-                    }
+                    html += inCode ? '<pre><code>' : '</code></pre>';
                     return;
                 }
                 
@@ -478,94 +298,256 @@
                 }
                 
                 if (line.startsWith('# ')) {
-                    html += `<h1>${line.slice(2)}</h1>`;
+                    html += `<h1>${escapeHtml(line.slice(2))}</h1>`;
                 } else if (line.startsWith('## ')) {
-                    html += `<h2>${line.slice(3)}</h2>`;
+                    html += `<h2>${escapeHtml(line.slice(3))}</h2>`;
                 } else if (line.startsWith('### ')) {
-                    html += `<h3>${line.slice(4)}</h3>`;
+                    html += `<h3>${escapeHtml(line.slice(4))}</h3>`;
                 } else if (line.startsWith('> ')) {
                     if (!inBlockquote) {
                         inBlockquote = true;
                         html += '<blockquote>';
                     }
-                    html += `<p>${line.slice(2)}</p>`;
+                    html += `<p>${escapeHtml(line.slice(2))}</p>`;
                 } else if (inBlockquote && line.trim() === '') {
                     inBlockquote = false;
                     html += '</blockquote>';
-                } else if (line.startsWith('- ') || line.startsWith('* ') || line.match(/^\d+\./)) {
+                } else if (line.startsWith('- ') || line.startsWith('* ')) {
                     if (!inList) {
                         inList = true;
                         html += '<ul>';
                     }
-                    const text = line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '');
-                    html += `<li>${text}</li>`;
+                    html += `<li>${escapeHtml(line.slice(2))}</li>`;
+                } else if (line.match(/^\d+\./)) {
+                    if (!inList) {
+                        inList = true;
+                        html += '<ol>';
+                    }
+                    html += `<li>${escapeHtml(line.replace(/^\d+\.\s*/, ''))}</li>`;
                 } else if (inList && line.trim() === '') {
                     inList = false;
                     html += '</ul>';
                 } else if (line.startsWith('![')) {
-                    const altText = line.slice(2, line.indexOf(']'));
-                    const imgSrc = line.slice(line.indexOf('(') + 1, line.indexOf(')'));
-                    html += `<img src="${imgSrc}" alt="${altText}">`;
+                    const match = line.match(/!\[(.*?)\]\((.*?)\)/);
+                    if (match) {
+                        html += `<img src="${match[2]}" alt="${escapeHtml(match[1])}" style="max-width:100%;height:auto;">`;
+                    }
                 } else if (line.startsWith('[')) {
-                    const linkText = line.slice(1, line.indexOf(']'));
-                    const linkHref = line.slice(line.indexOf('(') + 1, line.indexOf(')'));
-                    
-                    // Detect internal links to other posts
-                    if (linkHref.endsWith('.md')) {
-                        html += `<a href="${linkHref}" data-internal="true">${linkText}</a>`;
-                    } else {
-                        html += `<a href="${linkHref}" target="_blank">${linkText}</a>`;
+                    const match = line.match(/\[(.*?)\]\((.*?)\)/);
+                    if (match) {
+                        html += `<a href="${match[2]}">${escapeHtml(match[1])}</a>`;
                     }
-                } else if (line.trim() === '') {
-                    // Skip empty lines
-                    if (!inList && !inBlockquote) {
-                        html += '<br>';
-                    }
-                } else {
-                    html += `<p>${line}</p>`;
+                } else if (line.trim() !== '') {
+                    html += `<p>${escapeHtml(line)}</p>`;
                 }
             });
             
-            // Close any open tags
             if (inList) html += '</ul>';
             if (inBlockquote) html += '</blockquote>';
-            if (inCode) html += '</code></pre>';
             
             return html;
         }
 
-        function setActivePost(postUrl) {
-            // Remove active class from all items
-            const items = document.querySelectorAll('#post-list li');
-            items.forEach(item => item.classList.remove('active'));
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function getLeafTiles(tile) {
+            if (!tile.children) return [tile];
+            return tile.children.flatMap(getLeafTiles);
+        }
+
+        function subdivideForViewport() {
+            // Create root tile that fills viewport width plus some overflow
+            const rootWidth = viewportWidth + ABSOLUTE_MIN_TILE * 2;
+            const rootHeight = 3000; // Initial height, will grow
             
-            // Find the matching item and add active class
-            const links = document.querySelectorAll(`[data-post="${postUrl}"]`);
-            links.forEach(link => {
-                link.parentElement.classList.add('active');
+            tileTree = new Tile(-ABSOLUTE_MIN_TILE, 0, rootWidth, rootHeight);
+            
+            // Subdivide until tiles are reasonable size
+            let leaves = [tileTree];
+            let iterations = 0;
+            
+            while (iterations < 100) {
+                const splittable = leaves.filter(t => t.canSplit());
+                if (splittable.length === 0) break;
+                
+                // Split random tiles
+                const toSplit = splittable.filter(() => Math.random() > 0.3);
+                if (toSplit.length === 0) toSplit.push(splittable[0]);
+                
+                toSplit.forEach(t => {
+                    const idx = leaves.indexOf(t);
+                    const children = t.split();
+                    leaves.splice(idx, 1, ...children);
+                });
+                
+                iterations++;
+            }
+            
+            return leaves;
+        }
+
+        function tryPlacePost() {
+            if (postsLoaded >= posts.length) return false;
+            
+            const leaves = getLeafTiles(tileTree);
+            const candidates = leaves.filter(t => t.canBePost() && !t.isPost && !t.children);
+            
+            if (candidates.length === 0) return false;
+            
+            // Find candidate that's reasonably spaced from other posts
+            const existingPosts = leaves.filter(t => t.isPost);
+            let bestCandidate = null;
+            let bestScore = -Infinity;
+            
+            candidates.forEach(c => {
+                let minDist = Infinity;
+                existingPosts.forEach(p => {
+                    const dy = Math.abs(c.y - p.y);
+                    if (dy < minDist) minDist = dy;
+                });
+                
+                const score = minDist + Math.random() * 200;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCandidate = c;
+                }
+            });
+            
+            if (!bestCandidate) bestCandidate = candidates[0];
+            
+            bestCandidate.isPost = true;
+            bestCandidate.postData = posts[postsLoaded++];
+            return true;
+        }
+
+        function createTileElement(tile) {
+            const el = document.createElement('div');
+            el.className = tile.isPost ? 'tile post-tile' : 'tile';
+            el.style.left = `${tile.x}px`;
+            el.style.top = `${tile.y}px`;
+            el.style.width = `${tile.w}px`;
+            el.style.height = `${tile.h}px`;
+            
+            if (tile.isPost) {
+                el.innerHTML = tile.postData.html;
+            } else {
+                const img = getRandomImage();
+                if (img && Math.random() > 0.3) {
+                    const imgEl = document.createElement('img');
+                    imgEl.src = img.src;
+                    imgEl.alt = img.alt || '';
+                    el.appendChild(imgEl);
+                } else {
+                    el.classList.add('color-fill');
+                    el.style.backgroundColor = getRandomPastel();
+                }
+            }
+            
+            return el;
+        }
+
+        function updateVisibleTiles() {
+            const scrollTop = viewport.scrollTop;
+            const scrollBottom = scrollTop + viewportHeight;
+            const renderTop = scrollTop - viewportHeight * BUFFER_TILES;
+            const renderBottom = scrollBottom + viewportHeight * BUFFER_TILES;
+            
+            const leaves = getLeafTiles(tileTree);
+            
+            // Check if we need to grow the tree
+            const maxY = Math.max(...leaves.map(t => t.y + t.h));
+            if (renderBottom > maxY - viewportHeight) {
+                growTree();
+            }
+            
+            // Render visible tiles
+            leaves.forEach(tile => {
+                const tileTop = tile.y;
+                const tileBottom = tile.y + tile.h;
+                const isVisible = tileBottom > renderTop && tileTop < renderBottom;
+                
+                if (isVisible && !tile.element) {
+                    tile.element = createTileElement(tile);
+                    container.appendChild(tile.element);
+                    renderedTiles.set(tile.id, tile);
+                } else if (!isVisible && tile.element) {
+                    tile.element.remove();
+                    tile.element = null;
+                    renderedTiles.delete(tile.id);
+                }
+            });
+            
+            // Update container height
+            const newHeight = Math.max(...leaves.map(t => t.y + t.h)) + MARGIN;
+            if (newHeight > containerHeight) {
+                containerHeight = newHeight;
+                container.style.height = `${containerHeight}px`;
+            }
+        }
+
+        function growTree() {
+            // Extend the tree downward by splitting bottom tiles
+            const leaves = getLeafTiles(tileTree);
+            const bottomTiles = leaves.filter(t => {
+                const maxLeafY = Math.max(...leaves.map(l => l.y + l.h));
+                return (t.y + t.h) > maxLeafY - ABSOLUTE_MAX_TILE * 2;
+            });
+            
+            // Try to place a post before growing
+            if (postsLoaded < posts.length) {
+                tryPlacePost();
+            }
+            
+            // Split some bottom tiles vertically to extend
+            bottomTiles.forEach(t => {
+                if (t.h > ABSOLUTE_MIN_TILE * 1.5 && Math.random() > 0.5) {
+                    t.split();
+                }
             });
         }
 
-        function showUnderConstruction() {
-            content.innerHTML = `
-                <div class="post">
-                    <h1>UNDER CONSTRUCTION</h1>
-                    <p>Content will be available soon.</p>
-                </div>
-            `;
+        function onScroll() {
+            requestAnimationFrame(updateVisibleTiles);
         }
 
-        function showErrorMessage() {
-            content.innerHTML = `
-                <div class="post">
-                    <h1>Network Error</h1>
-                    <p>Unable to load content, or no content is present.</p>
-                </div>
-            `;
+        async function init() {
+            viewportWidth = viewport.clientWidth;
+            viewportHeight = viewport.clientHeight;
+            
+            await Promise.all([loadImages(), loadPosts()]);
+            document.getElementById('loader').style.display = 'none';
+            
+            // Initial subdivision
+            subdivideForViewport();
+            
+            // Place initial posts
+            for (let i = 0; i < Math.min(2, posts.length); i++) {
+                tryPlacePost();
+            }
+            
+            // Initial render
+            updateVisibleTiles();
+            
+            // Scroll handler
+            viewport.addEventListener('scroll', onScroll, { passive: true });
         }
 
-        // Initialize the blog
-        document.addEventListener('DOMContentLoaded', loadBlogPosts);
+        window.addEventListener('resize', () => {
+            // Clear and rebuild on resize
+            container.innerHTML = '';
+            renderedTiles.clear();
+            postsLoaded = 0;
+            containerHeight = 0;
+            viewportWidth = viewport.clientWidth;
+            viewportHeight = viewport.clientHeight;
+            init();
+        });
+
+        init();
     </script>
 </body>
 </html>
