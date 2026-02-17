@@ -34,7 +34,6 @@
 
         #grid-container {
             position: relative;
-            transform-origin: 0 0;
         }
 
         .tile {
@@ -57,25 +56,25 @@
 
         .post-tile {
             background: #fffef8;
-            padding: 25px;
+            padding: 20px;
             overflow-y: auto;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.06);
+            border: 1px solid #e0d5c8;
         }
 
         .post-tile h1 {
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             margin-bottom: 0.8rem;
             font-weight: 600;
         }
 
         .post-tile h2 {
-            font-size: 1.1rem;
+            font-size: 1rem;
             margin: 1rem 0 0.5rem;
             font-weight: 600;
         }
 
         .post-tile h3 {
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             margin: 0.8rem 0 0.4rem;
             font-weight: 600;
         }
@@ -92,8 +91,8 @@
         }
 
         .post-tile pre {
-            background: #f0ebe3;
-            padding: 10px;
+            background: #f5f0e8;
+            padding: 8px;
             overflow-x: auto;
             margin: 0.8rem 0;
             font-family: monospace;
@@ -102,13 +101,13 @@
 
         .post-tile code {
             font-family: monospace;
-            background: #f0ebe3;
-            padding: 2px 5px;
+            background: #f5f0e8;
+            padding: 2px 4px;
             font-size: 0.85em;
         }
 
         .post-tile blockquote {
-            border-left: 3px solid #c45c3e;
+            border-left: 2px solid #c45c3e;
             padding-left: 0.8rem;
             margin: 0.8rem 0;
             color: #555;
@@ -145,7 +144,7 @@
             max-width: 300px;
             max-height: 200px;
             overflow: auto;
-            display: none; /* Hidden by default - toggle in dev tools */
+            display: none;
         }
     </style>
 </head>
@@ -165,32 +164,25 @@
         ];
 
         const ABSOLUTE_MIN_TILE = 200;
-        const ABSOLUTE_MAX_TILE = 4000;
-        const POST_MIN_WIDTH = 600;
-        const POST_MAX_WIDTH = 1200;
-        const POST_MIN_HEIGHT = 400;
-        const POST_MAX_HEIGHT = 800;
+        const ABSOLUTE_MAX_TILE = 600;
+        const POST_MIN_WIDTH = 500;
+        const POST_MAX_WIDTH = 900;
+        const POST_MIN_HEIGHT = 350;
+        const POST_MAX_HEIGHT = 600;
         const MARGIN = 30;
         const BUFFER_TILES = 2;
-        const POST_CHANCE = 0.15; // Chance for a tile to become a post slot
+        const POST_STRIP_CHANCE = 0.25;
 
         const container = document.getElementById('grid-container');
         const viewport = document.getElementById('viewport');
-        const debug = document.getElementById('debug');
         
         let posts = [];
         let images = [];
         let renderedTiles = new Map();
         let postsLoaded = 0;
-        let lastPostY = 0;
-        let generationY = 0; // How far down we've generated
+        let generationY = 0;
         let viewportWidth = 0;
         let viewportHeight = 0;
-
-        function log(msg) {
-            debug.innerHTML += msg + '<br>';
-            debug.scrollTop = debug.scrollHeight;
-        }
 
         function getRandomPastel() {
             return warmPastels[Math.floor(Math.random() * warmPastels.length)];
@@ -201,91 +193,93 @@
             return images[Math.floor(Math.random() * images.length)];
         }
 
-        function getRandomPostSize() {
-            const w = POST_MIN_WIDTH + Math.random() * (POST_MAX_WIDTH - POST_MIN_WIDTH);
-            const h = POST_MIN_HEIGHT + Math.random() * (POST_MAX_HEIGHT - POST_MIN_HEIGHT);
-            return { w, h };
+        function getRandomPostWidth() {
+            return POST_MIN_WIDTH + Math.random() * (POST_MAX_WIDTH - POST_MIN_WIDTH);
         }
 
-        // Generate a strip of tiles at the given Y position
-        // Returns array of tile descriptors (not yet rendered)
-        function generateTileStrip(startY) {
+        function getRandomPostHeight() {
+            return POST_MIN_HEIGHT + Math.random() * (POST_MAX_HEIGHT - POST_MIN_HEIGHT);
+        }
+
+        // Generate a horizontal strip of tiles
+        // If isPostStrip, one tile will be post-sized
+        function generateStrip(startY, isPostStrip) {
             const tiles = [];
             let currentX = 0;
             
-            while (currentX < viewportWidth) {
-                const remaining = viewportWidth - currentX;
+            if (isPostStrip && postsLoaded < posts.length) {
+                // Post strip: fixed height, fill width with tiles, one is post-sized
+                const stripHeight = getRandomPostHeight();
+                const postWidth = getRandomPostWidth();
+                const postX = MARGIN + Math.random() * Math.max(0, viewportWidth - postWidth - MARGIN * 2);
                 
-                // Decide if this should be a post slot
-                const shouldBePost = postsLoaded < posts.length && 
-                                    Math.random() < POST_CHANCE &&
-                                    remaining >= POST_MIN_WIDTH &&
-                                    currentX >= MARGIN;
-                
-                if (shouldBePost) {
-                    const size = getRandomPostSize();
-                    const w = Math.min(size.w, remaining - MARGIN);
-                    const h = size.h;
-                    
-                    if (w >= POST_MIN_WIDTH && currentX + w <= viewportWidth - MARGIN) {
+                // Tile before post
+                if (postX > currentX) {
+                    const w = postX - currentX;
+                    if (w > 50) {
                         tiles.push({
                             x: currentX,
                             y: startY,
                             w: w,
-                            h: h,
-                            isPost: true,
-                            postIndex: postsLoaded++,
+                            h: stripHeight,
+                            isPost: false,
                             id: Math.random().toString(36).substr(2, 9)
                         });
-                        currentX += w;
-                        lastPostY = startY;
-                        continue;
                     }
                 }
                 
-                // Regular tile with random size
-                const maxW = Math.min(remaining, ABSOLUTE_MAX_TILE);
-                const minW = Math.min(ABSOLUTE_MIN_TILE, remaining);
-                const w = minW + Math.random() * (maxW - minW);
-                const h = ABSOLUTE_MIN_TILE + Math.random() * (ABSOLUTE_MAX_TILE - ABSOLUTE_MIN_TILE);
-                
+                // Post tile
                 tiles.push({
-                    x: currentX,
+                    x: postX,
                     y: startY,
-                    w: w,
-                    h: h,
-                    isPost: false,
-                    id: Math.random().toString(36).substr(2, 9)
+                    w: postWidth,
+                    h: stripHeight,
+                    isPost: true,
+                    postIndex: postsLoaded++,
+                    id: 'post-' + (postsLoaded - 1)
                 });
                 
-                currentX += w;
-            }
-            
-            // Subdivide tall tiles vertically to create more horizontal strips
-            const finalTiles = [];
-            tiles.forEach(tile => {
-                if (tile.isPost) {
-                    finalTiles.push(tile);
-                } else if (tile.h > ABSOLUTE_MIN_TILE * 2 && Math.random() > 0.5) {
-                    // Split vertically
-                    const splitH = ABSOLUTE_MIN_TILE + Math.random() * (tile.h - ABSOLUTE_MIN_TILE * 2);
-                    finalTiles.push({
-                        ...tile,
-                        h: splitH,
-                        id: tile.id + 'a'
-                    });
-                    finalTiles.push({
-                        ...tile,
-                        y: tile.y + splitH,
-                        h: tile.h - splitH,
-                        id: tile.id + 'b'
-                    });
-                } else {
-                    finalTiles.push(tile);
+                // Tile after post
+                const afterX = postX + postWidth;
+                if (afterX < viewportWidth) {
+                    const w = viewportWidth - afterX;
+                    if (w > 50) {
+                        tiles.push({
+                            x: afterX,
+                            y: startY,
+                            w: w,
+                            h: stripHeight,
+                            isPost: false,
+                            id: Math.random().toString(36).substr(2, 9)
+                        });
+                    }
                 }
-            });
-            
-            return finalTiles;
+                
+                return { tiles, height: stripHeight };
+            } else {
+                // Regular strip: random height, fill width with random tiles
+                const stripHeight = ABSOLUTE_MIN_TILE + Math.random() * (ABSOLUTE_MAX_TILE - ABSOLUTE_MIN_TILE);
+                
+                while (currentX < viewportWidth - 10) {
+                    const remaining = viewportWidth - currentX;
+                    const maxW = Math.min(remaining, ABSOLUTE_MAX_TILE);
+                    const minW = Math.min(ABSOLUTE_MIN_TILE, remaining);
+                    const w = remaining < ABSOLUTE_MIN_TILE ? remaining : (minW + Math.random() * (maxW - minW));
+                    
+                    tiles.push({
+                        x: currentX,
+                        y: startY,
+                        w: w,
+                        h: stripHeight,
+                        isPost: false,
+                        id: Math.random().toString(36).substr(2, 9)
+                    });
+                    
+                    currentX += w;
+                }
+                
+                return { tiles, height: stripHeight };
+            }
         }
 
         async function loadImages() {
@@ -431,21 +425,18 @@
             return el;
         }
 
-        // Generate content down to targetY
         function ensureGenerated(targetY) {
             while (generationY < targetY) {
-                const stripHeight = ABSOLUTE_MIN_TILE + Math.random() * 200;
-                const tiles = generateTileStrip(generationY);
+                const isPostStrip = postsLoaded < posts.length && Math.random() < POST_STRIP_CHANCE;
+                const { tiles, height } = generateStrip(generationY, isPostStrip);
                 
                 tiles.forEach(tile => {
-                    // Store for later rendering
                     renderedTiles.set(tile.id, { ...tile, element: null });
                 });
                 
-                generationY += stripHeight;
+                generationY += height;
             }
             
-            // Update container height
             container.style.height = `${generationY + 100}px`;
         }
 
@@ -455,10 +446,8 @@
             const renderTop = scrollTop - viewportHeight * BUFFER_TILES;
             const renderBottom = scrollBottom + viewportHeight * BUFFER_TILES;
             
-            // Generate more if needed
             ensureGenerated(renderBottom + viewportHeight);
             
-            // Render visible, remove off-screen
             renderedTiles.forEach((tile, id) => {
                 const tileTop = tile.y;
                 const tileBottom = tile.y + tile.h;
@@ -485,25 +474,8 @@
             await Promise.all([loadImages(), loadPosts()]);
             document.getElementById('loader').style.display = 'none';
             
-            // Start with first post at top
-            if (posts.length > 0) {
-                const size = getRandomPostSize();
-                const x = MARGIN + Math.random() * (viewportWidth - size.w - MARGIN * 2);
-                const firstPost = {
-                    x: x,
-                    y: 50,
-                    w: size.w,
-                    h: size.h,
-                    isPost: true,
-                    postIndex: postsLoaded++,
-                    id: 'first-post'
-                };
-                renderedTiles.set(firstPost.id, { ...firstPost, element: null });
-                generationY = firstPost.y + firstPost.h + 100;
-                lastPostY = firstPost.y;
-            } else {
-                generationY = 0;
-            }
+            // Start generation from top - no special first post
+            generationY = 0;
             
             updateVisibleTiles();
             viewport.addEventListener('scroll', onScroll, { passive: true });
