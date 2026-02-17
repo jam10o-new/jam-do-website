@@ -131,10 +131,27 @@
             color: #888;
             z-index: 100;
         }
+
+        #debug {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: #0f0;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 300px;
+            max-height: 200px;
+            overflow: auto;
+            visible: false;
+        }
     </style>
 </head>
 <body>
     <div id="loader">loading...</div>
+    <div id="debug"></div>
     <div id="viewport">
         <div id="grid-container"></div>
     </div>
@@ -147,17 +164,19 @@
             '#f0e8e0', '#e8e0d5', '#ddd5c8', '#ede5d8'
         ];
 
-        const ABSOLUTE_MIN_TILE = 500;
-        const ABSOLUTE_MAX_TILE = 2000;
-        const POST_MIN_WIDTH = 700;
-        const POST_MAX_WIDTH = 3000;
-        const POST_MIN_HEIGHT = 1000;
-        const POST_MAX_HEIGHT = 3000;
+        // Fixed: MIN_TILE should be smaller than POST_MIN so tiles can grow into post-sized
+        const ABSOLUTE_MIN_TILE = 200;
+        const ABSOLUTE_MAX_TILE = 4000;
+        const POST_MIN_WIDTH = 600;
+        const POST_MAX_WIDTH = 1200;
+        const POST_MIN_HEIGHT = 400;
+        const POST_MAX_HEIGHT = 800;
         const MARGIN = 30;
         const BUFFER_TILES = 2;
 
         const container = document.getElementById('grid-container');
         const viewport = document.getElementById('viewport');
+        const debug = document.getElementById('debug');
         
         let posts = [];
         let images = [];
@@ -169,6 +188,11 @@
         let viewportWidth = 0;
         let viewportHeight = 0;
 
+        function log(msg) {
+            debug.innerHTML += msg + '<br>';
+            debug.scrollTop = debug.scrollHeight;
+        }
+
         function getRandomPastel() {
             return warmPastels[Math.floor(Math.random() * warmPastels.length)];
         }
@@ -178,7 +202,6 @@
             return images[Math.floor(Math.random() * images.length)];
         }
 
-        // A tile in our subdivision tree
         class Tile {
             constructor(x, y, w, h, parent = null) {
                 this.id = nextTileId++;
@@ -200,16 +223,17 @@
             }
 
             canBePost() {
-                return this.w >= POST_MIN_WIDTH && this.w <= POST_MAX_WIDTH &&
-                       this.h >= POST_MIN_HEIGHT && this.h <= POST_MAX_HEIGHT &&
-                       this.x >= MARGIN && (this.x + this.w) <= (viewportWidth - MARGIN);
+                const inBounds = this.x >= MARGIN && (this.x + this.w) <= (viewportWidth - MARGIN);
+                const goodWidth = this.w >= POST_MIN_WIDTH && this.w <= POST_MAX_WIDTH;
+                const goodHeight = this.h >= POST_MIN_HEIGHT && this.h <= POST_MAX_HEIGHT;
+                return inBounds && goodWidth && goodHeight && !this.children;
             }
 
             split() {
                 if (this.children) return;
                 
-                const canSplitH = this.w > ABSOLUTE_MIN_TILE * 1.5 && this.w > this.h * 0.5;
-                const canSplitV = this.h > ABSOLUTE_MIN_TILE * 1.5 && this.h > this.w * 0.5;
+                const canSplitH = this.w > ABSOLUTE_MIN_TILE * 1.5;
+                const canSplitV = this.h > ABSOLUTE_MIN_TILE * 1.5;
                 
                 let splitH;
                 if (canSplitH && canSplitV) {
@@ -360,13 +384,12 @@
         }
 
         function subdivideForViewport() {
-            // Create root tile that fills viewport width plus some overflow
-            const rootWidth = viewportWidth + ABSOLUTE_MIN_TILE * 2;
-            const rootHeight = 3000; // Initial height, will grow
+            // Root fills viewport exactly (no overflow for post placement)
+            const rootWidth = viewportWidth;
+            const rootHeight = 3000;
             
-            tileTree = new Tile(-ABSOLUTE_MIN_TILE, 0, rootWidth, rootHeight);
+            tileTree = new Tile(0, 0, rootWidth, rootHeight);
             
-            // Subdivide until tiles are reasonable size
             let leaves = [tileTree];
             let iterations = 0;
             
@@ -374,7 +397,6 @@
                 const splittable = leaves.filter(t => t.canSplit());
                 if (splittable.length === 0) break;
                 
-                // Split random tiles
                 const toSplit = splittable.filter(() => Math.random() > 0.3);
                 if (toSplit.length === 0) toSplit.push(splittable[0]);
                 
@@ -387,18 +409,35 @@
                 iterations++;
             }
             
+            log(`Subdivided into ${leaves.length} tiles`);
             return leaves;
         }
 
         function tryPlacePost() {
-            if (postsLoaded >= posts.length) return false;
+            if (postsLoaded >= posts.length) {
+                log('No more posts to place');
+                return false;
+            }
             
             const leaves = getLeafTiles(tileTree);
-            const candidates = leaves.filter(t => t.canBePost() && !t.isPost && !t.children);
+            const candidates = leaves.filter(t => t.canBePost() && !t.isPost);
             
-            if (candidates.length === 0) return false;
+            log(`Trying to place post ${postsLoaded + 1}/${posts.length}`);
+            log(`Candidates: ${candidates.length} (out of ${leaves.length} leaves)`);
             
-            // Find candidate that's reasonably spaced from other posts
+            if (candidates.length === 0) {
+                // Debug: show why no candidates
+                const wrongSize = leaves.filter(t => {
+                    const inBounds = t.x >= MARGIN && (t.x + t.w) <= (viewportWidth - MARGIN);
+                    return inBounds && !t.isPost && !t.children && (t.w < POST_MIN_WIDTH || t.w > POST_MAX_WIDTH || t.h < POST_MIN_HEIGHT || t.h > POST_MAX_HEIGHT);
+                });
+                log(`Wrong size but in bounds: ${wrongSize.length}`);
+                if (wrongSize.length > 0) {
+                    log(`Sample: w=${wrongSize[0].w}, h=${wrongSize[0].h}`);
+                }
+                return false;
+            }
+            
             const existingPosts = leaves.filter(t => t.isPost);
             let bestCandidate = null;
             let bestScore = -Infinity;
@@ -421,6 +460,7 @@
             
             bestCandidate.isPost = true;
             bestCandidate.postData = posts[postsLoaded++];
+            log(`Placed post at y=${bestCandidate.y}, w=${bestCandidate.w}, h=${bestCandidate.h}`);
             return true;
         }
 
@@ -458,13 +498,11 @@
             
             const leaves = getLeafTiles(tileTree);
             
-            // Check if we need to grow the tree
             const maxY = Math.max(...leaves.map(t => t.y + t.h));
             if (renderBottom > maxY - viewportHeight) {
                 growTree();
             }
             
-            // Render visible tiles
             leaves.forEach(tile => {
                 const tileTop = tile.y;
                 const tileBottom = tile.y + tile.h;
@@ -481,7 +519,6 @@
                 }
             });
             
-            // Update container height
             const newHeight = Math.max(...leaves.map(t => t.y + t.h)) + MARGIN;
             if (newHeight > containerHeight) {
                 containerHeight = newHeight;
@@ -490,19 +527,22 @@
         }
 
         function growTree() {
-            // Extend the tree downward by splitting bottom tiles
             const leaves = getLeafTiles(tileTree);
-            const bottomTiles = leaves.filter(t => {
-                const maxLeafY = Math.max(...leaves.map(l => l.y + l.h));
-                return (t.y + t.h) > maxLeafY - ABSOLUTE_MAX_TILE * 2;
-            });
+            const maxLeafY = Math.max(...leaves.map(l => l.y + l.h));
+            const bottomTiles = leaves.filter(t => (t.y + t.h) > maxLeafY - ABSOLUTE_MAX_TILE * 2);
             
-            // Try to place a post before growing
             if (postsLoaded < posts.length) {
-                tryPlacePost();
+                const placed = tryPlacePost();
+                if (!placed) {
+                    // If couldn't place post, split more to create candidates
+                    bottomTiles.forEach(t => {
+                        if (t.w > POST_MIN_WIDTH * 1.2 && t.h > POST_MIN_HEIGHT * 1.2 && Math.random() > 0.3) {
+                            t.split();
+                        }
+                    });
+                }
             }
             
-            // Split some bottom tiles vertically to extend
             bottomTiles.forEach(t => {
                 if (t.h > ABSOLUTE_MIN_TILE * 1.5 && Math.random() > 0.5) {
                     t.split();
@@ -518,32 +558,42 @@
             viewportWidth = viewport.clientWidth;
             viewportHeight = viewport.clientHeight;
             
+            log(`Viewport: ${viewportWidth}x${viewportHeight}`);
+            log(`Post requirements: ${POST_MIN_WIDTH}-${POST_MAX_WIDTH} x ${POST_MIN_HEIGHT}-${POST_MAX_HEIGHT}`);
+            
             await Promise.all([loadImages(), loadPosts()]);
+            log(`Loaded ${posts.length} posts, ${images.length} images`);
+            
             document.getElementById('loader').style.display = 'none';
             
-            // Initial subdivision
             subdivideForViewport();
             
-            // Place initial posts
-            for (let i = 0; i < Math.min(2, posts.length); i++) {
-                tryPlacePost();
+            // Try harder to place initial posts
+            for (let i = 0; i < Math.min(3, posts.length); i++) {
+                const placed = tryPlacePost();
+                if (!placed) {
+                    // Force split some tiles to create post-sized spaces
+                    const leaves = getLeafTiles(tileTree);
+                    const bigTiles = leaves.filter(t => t.w > POST_MAX_WIDTH && t.h > POST_MAX_HEIGHT);
+                    if (bigTiles.length > 0) {
+                        bigTiles[0].split();
+                        tryPlacePost(); // Try again after split
+                    }
+                }
             }
             
-            // Initial render
             updateVisibleTiles();
-            
-            // Scroll handler
             viewport.addEventListener('scroll', onScroll, { passive: true });
         }
 
         window.addEventListener('resize', () => {
-            // Clear and rebuild on resize
             container.innerHTML = '';
             renderedTiles.clear();
             postsLoaded = 0;
             containerHeight = 0;
             viewportWidth = viewport.clientWidth;
             viewportHeight = viewport.clientHeight;
+            debug.innerHTML = '';
             init();
         });
 
