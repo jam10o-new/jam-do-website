@@ -344,17 +344,17 @@
                 }
                 
                 if (line.startsWith('# ')) {
-                    html += `<h1>${escapeHtml(line.slice(2))}</h1>`;
+                    html += `<h1>${renderInline(line.slice(2))}</h1>`;
                 } else if (line.startsWith('## ')) {
-                    html += `<h2>${escapeHtml(line.slice(3))}</h2>`;
+                    html += `<h2>${renderInline(line.slice(3))}</h2>`;
                 } else if (line.startsWith('### ')) {
-                    html += `<h3>${escapeHtml(line.slice(4))}</h3>`;
+                    html += `<h3>${renderInline(line.slice(4))}</h3>`;
                 } else if (line.startsWith('> ')) {
                     if (!inBlockquote) {
                         inBlockquote = true;
                         html += '<blockquote>';
                     }
-                    html += `<p>${escapeHtml(line.slice(2))}</p>`;
+                    html += `<p>${renderInline(line.slice(2))}</p>`;
                 } else if (inBlockquote && line.trim() === '') {
                     inBlockquote = false;
                     html += '</blockquote>';
@@ -363,28 +363,28 @@
                         inList = true;
                         html += '<ul>';
                     }
-                    html += `<li>${escapeHtml(line.slice(2))}</li>`;
+                    html += `<li>${renderInline(line.slice(2))}</li>`;
                 } else if (line.match(/^\d+\./)) {
                     if (!inList) {
                         inList = true;
                         html += '<ol>';
                     }
-                    html += `<li>${escapeHtml(line.replace(/^\d+\.\s*/, ''))}</li>`;
+                    html += `<li>${renderInline(line.replace(/^\d+\.\s*/, ''))}</li>`;
                 } else if (inList && line.trim() === '') {
                     inList = false;
                     html += '</ul>';
                 } else if (line.startsWith('![')) {
                     const match = line.match(/!\[(.*?)\]\((.*?)\)/);
                     if (match) {
-                        html += `<img src="${match[2]}" alt="${escapeHtml(match[1])}" style="max-width:100%;height:auto;">`;
+                        html += `<img src="${match[2]}" alt="${renderInline(match[1])}" style="max-width:100%;height:auto;">`;
                     }
                 } else if (line.startsWith('[')) {
                     const match = line.match(/\[(.*?)\]\((.*?)\)/);
                     if (match) {
-                        html += `<a href="${match[2]}">${escapeHtml(match[1])}</a>`;
+                        html += `<a href="${match[2]}">${renderInline(match[1])}</a>`;
                     }
                 } else if (line.trim() !== '') {
-                    html += `<p>${escapeHtml(line)}</p>`;
+                    html += `<p>${renderInline(line)}</p>`;
                 }
             });
             
@@ -398,6 +398,14 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function renderInline(text) {
+            // Escape HTML entities first (preserves [, ], (, ))
+            text = escapeHtml(text);
+            // Convert markdown [text](url) to HTML anchors
+            text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+            return text;
         }
 
         function createTileElement(tile) {
