@@ -172,6 +172,7 @@
         const MARGIN = 30;
         const BUFFER_TILES = 2;
         const POST_STRIP_CHANCE = 0.25;
+        const POST_DELAY_Y = 400;  // px of image-only strips before posts can appear
 
         const container = document.getElementById('grid-container');
         const viewport = document.getElementById('viewport');
@@ -217,7 +218,7 @@
                 // Tile before post
                 if (postX > currentX) {
                     const w = postX - currentX;
-                    if (w > 50) {
+                    if (w > 10) {
                         tiles.push({
                             x: currentX,
                             y: startY,
@@ -244,7 +245,7 @@
                 const afterX = postX + postWidth;
                 if (afterX < viewportWidth) {
                     const w = viewportWidth - afterX;
-                    if (w > 50) {
+                    if (w > 10) {
                         tiles.push({
                             x: afterX,
                             y: startY,
@@ -261,8 +262,9 @@
                 // Regular strip: random height, fill width with random tiles
                 const stripHeight = ABSOLUTE_MIN_TILE + Math.random() * (ABSOLUTE_MAX_TILE - ABSOLUTE_MIN_TILE);
                 
-                while (currentX < viewportWidth - 10) {
+                while (currentX < viewportWidth) {
                     const remaining = viewportWidth - currentX;
+                    if (remaining <= 0) break;
                     const maxW = Math.min(remaining, ABSOLUTE_MAX_TILE);
                     const minW = Math.min(ABSOLUTE_MIN_TILE, remaining);
                     const w = remaining < ABSOLUTE_MIN_TILE ? remaining : (minW + Math.random() * (maxW - minW));
@@ -421,7 +423,7 @@
                 el.innerHTML = posts[tile.postIndex].html;
             } else {
                 const img = getRandomImage();
-                if (img && Math.random() > 0.3) {
+                if (img) {
                     const imgEl = document.createElement('img');
                     imgEl.src = img.src;
                     imgEl.alt = img.alt || '';
@@ -437,7 +439,9 @@
 
         function ensureGenerated(targetY) {
             while (generationY < targetY) {
-                const isPostStrip = postsLoaded < posts.length && Math.random() < POST_STRIP_CHANCE;
+                const isPostStrip = postsLoaded < posts.length
+                    && generationY >= POST_DELAY_Y
+                    && Math.random() < POST_STRIP_CHANCE;
                 const { tiles, height } = generateStrip(generationY, isPostStrip);
                 
                 tiles.forEach(tile => {
