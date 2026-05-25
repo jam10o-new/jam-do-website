@@ -183,6 +183,7 @@
         let generationY = 0;
         let viewportWidth = 0;
         let viewportHeight = 0;
+        let dataLoaded = false;
 
         function getRandomPastel() {
             return warmPastels[Math.floor(Math.random() * warmPastels.length)];
@@ -298,6 +299,7 @@
         }
 
         async function loadPosts() {
+            posts = [];
             try {
                 const response = await fetch('posts/index.txt');
                 if (!response.ok) throw new Error('No posts');
@@ -471,11 +473,15 @@
             viewportWidth = viewport.clientWidth;
             viewportHeight = viewport.clientHeight;
             
-            await Promise.all([loadImages(), loadPosts()]);
-            document.getElementById('loader').style.display = 'none';
+            if (!dataLoaded) {
+                await Promise.all([loadImages(), loadPosts()]);
+                dataLoaded = true;
+                document.getElementById('loader').style.display = 'none';
+            }
             
-            // Start generation from top - no special first post
+            // Start generation from top
             generationY = 0;
+            postsLoaded = 0;
             
             updateVisibleTiles();
             viewport.addEventListener('scroll', onScroll, { passive: true });
@@ -484,11 +490,11 @@
         window.addEventListener('resize', () => {
             container.innerHTML = '';
             renderedTiles.clear();
-            postsLoaded = 0;
             generationY = 0;
+            postsLoaded = 0;
             viewportWidth = viewport.clientWidth;
             viewportHeight = viewport.clientHeight;
-            init();
+            updateVisibleTiles();
         });
 
         init();
